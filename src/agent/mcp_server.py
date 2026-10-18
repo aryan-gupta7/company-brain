@@ -27,9 +27,16 @@ CYPHER_TEMPLATES = {
     """,
 
     "get_entity_connections": """
-        MATCH (e {entity_id: $entity_id})-[*1..3]-(connected)
-        RETURN DISTINCT labels(connected) AS entity_type,
-               connected.name AS name, connected.status AS status
+        MATCH (e {entity_id: $entity_id})
+        OPTIONAL MATCH (e)-[]-(h1)
+        OPTIONAL MATCH (h1)-[]-(h2) WHERE h2 <> e
+        OPTIONAL MATCH (h2)-[]-(h3) WHERE h3 <> h1 AND h3 <> e
+        WITH DISTINCT COALESCE(h3, h2, h1) AS connected
+        RETURN labels(connected) AS entity_type,
+               connected.name AS name,
+               connected.task_id AS task_id,
+               connected.entity_id AS entity_id,
+               connected.incident_id AS incident_id
         LIMIT 50
     """,
 
@@ -74,7 +81,11 @@ CYPHER_TEMPLATES = {
 
     "get_evidence_path": """
         MATCH p=(n)-[*1..3]-(m)
-        WHERE id(n) IN $node_ids
+        WHERE n.task_id IN $node_ids
+           OR n.entity_id IN $node_ids
+           OR n.reg_id IN $node_ids
+           OR n.incident_id IN $node_ids
+           OR n.process_id IN $node_ids
         RETURN p
         LIMIT 20
     """,

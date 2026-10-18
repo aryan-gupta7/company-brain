@@ -22,6 +22,7 @@ from core.graph_utils import (
     verify_all_spans,
     derive_confidence_for_edge,
 )
+from core.sop_parser import parse_sop_document
 
 
 # --- Sample SOP document ---
@@ -48,50 +49,24 @@ Dependencies:
 """
 
 
-# --- Simulated extraction results ---
+# --- REAL EXTRACTION: Parse the SOP text using rule-based parser ---
 # In production: GraphRAG SDK chunks the document, LLM extracts these.
-# For demo: we show what the extraction pipeline produces.
+# For demo: we use a deterministic regex + IDF-weighted matching parser.
+EXTRACTED_TASKS, EXTRACTED_DEPS = parse_sop_document(SOP_TEXT)
 
-EXTRACTED_TASKS = [
-    {'task_id': 'onb_1', 'name': 'Receive signed offer letter', 'time_per_exec_hours': 0.25, 'owner': 'HR'},
-    {'task_id': 'onb_2', 'name': 'Create AD account', 'time_per_exec_hours': 0.5, 'owner': 'IT'},
-    {'task_id': 'onb_3', 'name': 'Assign laptop and equipment', 'time_per_exec_hours': 1.0, 'owner': 'IT'},
-    {'task_id': 'onb_4', 'name': 'Schedule first-day orientation', 'time_per_exec_hours': 0.25, 'owner': 'HR'},
-    {'task_id': 'onb_5', 'name': 'Prepare 30-60-90 day plan', 'time_per_exec_hours': 2.0, 'owner': 'Manager'},
-    {'task_id': 'onb_6', 'name': 'Enroll in benefits portal', 'time_per_exec_hours': 0.5, 'owner': 'HR'},
-    {'task_id': 'onb_7', 'name': 'Grant system access', 'time_per_exec_hours': 0.5, 'owner': 'IT'},
-    {'task_id': 'onb_8', 'name': 'Conduct first-week check-in', 'time_per_exec_hours': 1.0, 'owner': 'Manager'},
-]
-
-EXTRACTED_DEPS = [
-    {'from': 'onb_2', 'to': 'onb_1', 'source_quote': 'After receiving the signed offer letter, IT creates the Active Directory account', 'confidence': 0.95, 'extraction_method': 'llm'},
-    {'from': 'onb_3', 'to': 'onb_2', 'source_quote': 'After the AD account is created, IT assigns a laptop and equipment', 'confidence': 0.9, 'extraction_method': 'llm'},
-    {'from': 'onb_4', 'to': 'onb_2', 'source_quote': 'After the AD account is created, HR schedules the first-day orientation', 'confidence': 0.85, 'extraction_method': 'llm'},
-    {'from': 'onb_5', 'to': 'onb_4', 'source_quote': 'After orientation is scheduled, the Manager prepares the 30-60-90 day plan', 'confidence': 0.8, 'extraction_method': 'llm'},
-    {'from': 'onb_6', 'to': 'onb_1', 'source_quote': 'After the offer letter is received, HR enrolls the employee in the benefits portal', 'confidence': 0.9, 'extraction_method': 'llm'},
-    {'from': 'onb_7', 'to': 'onb_3', 'source_quote': 'After the laptop is assigned, IT grants system access (email, VPN, GitHub)', 'confidence': 0.85, 'extraction_method': 'llm'},
-    {'from': 'onb_8', 'to': 'onb_7', 'source_quote': 'After system access is granted, the Manager conducts the first-week check-in', 'confidence': 0.9, 'extraction_method': 'llm'},
-]
-
-# Simulated second extraction run (for agreement scoring)
+# Simulated additional extraction runs (for agreement scoring)
+# These simulate what a second/third LLM extraction run might produce.
 EXTRACTED_DEPS_RUN_2 = [
-    {'from': 'onb_2', 'to': 'onb_1', 'source_quote': '...', 'confidence': 0.9},
-    {'from': 'onb_3', 'to': 'onb_2', 'source_quote': '...', 'confidence': 0.85},
-    {'from': 'onb_4', 'to': 'onb_2', 'source_quote': '...', 'confidence': 0.8},
-    {'from': 'onb_5', 'to': 'onb_4', 'source_quote': '...', 'confidence': 0.75},
-    {'from': 'onb_6', 'to': 'onb_1', 'source_quote': '...', 'confidence': 0.9},
-    {'from': 'onb_7', 'to': 'onb_3', 'source_quote': '...', 'confidence': 0.85},
-    # onb_8 → onb_7 NOT in run 2 (simulating extraction inconsistency)
+    {'from': d['from'], 'to': d['to'], 'source_quote': d['source_quote'], 'confidence': d['confidence'] - 0.05}
+    for d in EXTRACTED_DEPS
 ]
+# Remove one edge to simulate extraction inconsistency
+if len(EXTRACTED_DEPS_RUN_2) > 1:
+    EXTRACTED_DEPS_RUN_2.pop()
 
 EXTRACTED_DEPS_RUN_3 = [
-    {'from': 'onb_2', 'to': 'onb_1', 'source_quote': '...', 'confidence': 0.95},
-    {'from': 'onb_3', 'to': 'onb_2', 'source_quote': '...', 'confidence': 0.9},
-    {'from': 'onb_4', 'to': 'onb_2', 'source_quote': '...', 'confidence': 0.85},
-    {'from': 'onb_5', 'to': 'onb_4', 'source_quote': '...', 'confidence': 0.8},
-    {'from': 'onb_6', 'to': 'onb_1', 'source_quote': '...', 'confidence': 0.85},
-    {'from': 'onb_7', 'to': 'onb_3', 'source_quote': '...', 'confidence': 0.9},
-    {'from': 'onb_8', 'to': 'onb_7', 'source_quote': '...', 'confidence': 0.9},
+    {'from': d['from'], 'to': d['to'], 'source_quote': d['source_quote'], 'confidence': d['confidence']}
+    for d in EXTRACTED_DEPS
 ]
 
 

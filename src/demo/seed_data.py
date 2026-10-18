@@ -400,9 +400,74 @@ COMPLIANCE_MAPPINGS = [
      'source_quote': 'Customer data entry must comply with GDPR Art. 33'},
     {'task_id': 't_data_entry', 'reg_id': 'ccpa_ca',
      'source_quote': 'California customer data subject to CCPA'},
+    {'task_id': 't_data_entry', 'reg_id': 'dpdpa_in',
+     'source_quote': 'Customer data processing under DPDPA 2023 Section 8(6)'},
+    {'task_id': 't_data_entry', 'reg_id': 'cert_in',
+     'source_quote': 'CERT-In April 2022 Directive: 6-hour breach reporting'},
     {'task_id': 't_invoice_recon', 'reg_id': 'sec_8k',
      'source_quote': 'Financial reconciliation data for SEC reporting'},
 ]
+
+
+# --- India-specific regulation data ---
+# DPDPA 2023: Digital Personal Data Protection Act (India)
+# CERT-In: Indian Computer Emergency Response Team
+# IT Act 2000: Information Technology Act (India)
+
+INDIA_REGULATIONS = [
+    {
+        'reg_id': 'dpc_in',
+        'name': 'DPDPA 2023',
+        'full_name': 'Digital Personal Data Protection Act, 2023',
+        'jurisdiction': 'India',
+        'citation': 'DPDPA 2023, Section 8(6): notify Data Protection Board on personal data breach',
+        'breach_notification_hours': 72,
+        'max_penalty_inr': 2500000000,  # ₹250 crore
+        'penalty_usd_approx': 30000000,  # ~$30M USD
+        'status': 'In force (phased: core Nov 2025, penalties Nov 2026, remainder May 2027)',
+        'enacted': '2023-08-11',
+        'key_provisions': 'Data fiduciary obligations, Data Principal rights, Data Protection Board of India',
+    },
+    {
+        'reg_id': 'cert_in',
+        'name': 'CERT-In Directive',
+        'full_name': 'CERT-In April 2022 Directions (Section 70B IT Act)',
+        'jurisdiction': 'India',
+        'citation': 'CERT-In 2022 Directive: report cyber incidents within 6 hours',
+        'breach_notification_hours': 6,
+        'max_penalty_inr': None,
+        'penalty_usd_approx': None,
+        'status': 'In force since April 2022',
+        'enacted': '2022-04-28',
+        'key_provisions': '6-hour breach reporting for high-severity incidents, ICT logs within India, NTP sync',
+    },
+    {
+        'reg_id': 'it_act_india',
+        'name': 'IT Act 2000',
+        'full_name': 'Information Technology Act, 2000 (India)',
+        'jurisdiction': 'India',
+        'citation': 'IT Act Section 72A: disclosure of information in breach of lawful contract',
+        'breach_notification_hours': None,
+        'max_penalty_inr': 500000,  # ₹5 lakh
+        'penalty_usd_approx': 6000,  # ~$6K USD
+        'status': 'In force',
+        'enacted': '2000-06-17',
+        'key_provisions': 'Section 43A: compensation for data breach; Section 72A: criminal penalty up to 3 years + ₹5L fine',
+    },
+]
+
+# India-specific playbook step (CERT-In 6-hour notification)
+INDIA_BREACH_PLAYBOOK_EXTENSION = {
+    'step_id': 'step_cert_in_notify',
+    'name': 'CERT-In Incident Notification (6 hours)',
+    'order': 7,
+    'amount': 6,
+    'unit': 'clock_hours',
+    'trigger': 'detection',
+    'contact': 'CERT-In Nodal Officer',
+    'contact_role': 'Government Cyber Response',
+    'legal_citation': 'CERT-In April 2022 Directive (Section 70B, IT Act 2000): 6-hour breach reporting for high-severity incidents',
+}
 
 
 def get_playbook(incident_type: str) -> dict:
@@ -448,3 +513,13 @@ def get_task_dependencies() -> list:
 def get_compliance_mappings() -> list:
     """Get task-to-regulation compliance mappings."""
     return COMPLIANCE_MAPPINGS
+
+
+def get_india_regulations() -> list:
+    """Get India-specific regulation data."""
+    return INDIA_REGULATIONS
+
+
+def get_india_playbook_extension() -> dict:
+    """Get India-specific playbook step (CERT-In 6h notification)."""
+    return INDIA_BREACH_PLAYBOOK_EXTENSION

@@ -152,9 +152,10 @@ class CompanyBrainDB:
                     t.decision_complexity = $decision_complexity,
                     t.exception_rate = $exception_rate,
                     t.error_cost_dollars = $error_cost_dollars,
-                    t.compliance_risk = $compliance_risk
+                    t.compliance_risk = $compliance_risk,
+                    t.implementation_cost_annual = $implementation_cost_annual
                 """,
-                task
+                {**task, 'implementation_cost_annual': task.get('implementation_cost_annual', 0)}
             )
 
     def seed_regulations(self, regulations: list):
@@ -166,9 +167,14 @@ class CompanyBrainDB:
                 SET r.name = $name,
                     r.jurisdiction = $jurisdiction,
                     r.citation = $citation,
-                    r.effective_date = $effective_date
+                    r.effective_date = $effective_date,
+                    r.breach_notification_hours = $breach_notification_hours,
+                    r.max_penalty_inr = $max_penalty_inr,
+                    r.status = $status
                 """,
-                reg
+                {**reg, 'breach_notification_hours': reg.get('breach_notification_hours'),
+                 'max_penalty_inr': reg.get('max_penalty_inr'),
+                 'status': reg.get('status')}
             )
 
     def seed_processes(self, processes: list, tasks: list):
@@ -464,13 +470,24 @@ class CompanyBrainDB:
         return result.result_set or []
 
     def get_evidence_path_formatted(self, node_ids: list) -> list:
-        """Get evidence path and return as formatted string."""
+        """Get evidence path and return as formatted string.
+
+        Uses explicit 1-hop query (not variable-length paths) for FalkorDB
+        compatibility and predictable performance on large graphs.
+        Uses business keys (task_id, entity_id, reg_id, incident_id, process_id)
+        instead of internal FalkorDB IDs for portability.
+        """
         result = self.graph.query(
             """
-            MATCH p=(n)-[*1..3]-(m)
-            WHERE id(n) IN $node_ids
-            RETURN [node IN nodes(p) | COALESCE(node.name, node.task_id, node.incident_id, 'unknown')] AS path_nodes,
-                   [rel IN relationships(p) | type(rel)] AS path_rels
+            MATCH (n)-[r]-(m)
+            WHERE n.task_id IN $node_ids
+               OR n.entity_id IN $node_ids
+               OR n.reg_id IN $node_ids
+               OR n.incident_id IN $node_ids
+               OR n.process_id IN $node_ids
+            RETURN COALESCE(n.name, n.task_id, n.entity_id, n.reg_id, n.incident_id, n.process_id, 'unknown') AS src,
+                   COALESCE(m.name, m.task_id, m.entity_id, m.reg_id, m.incident_id, m.process_id, 'unknown') AS dst,
+                   type(r) AS rel_type
             LIMIT 10
             """,
             {'node_ids': node_ids}
@@ -604,15 +621,261 @@ class CompanyBrainDB:
         return result.result_set or []
 
     def get_evidence_path(self, node_ids: list) -> list:
-        """Get the evidence subgraph connecting result nodes."""
+        """Get the evidence subgraph connecting result nodes.
+
+        Uses explicit 1-hop and 2-hop queries (not variable-length paths)
+        for FalkorDB compatibility and predictable performance on large graphs.
+        Uses business keys (task_id, entity_id, reg_id, incident_id, process_id)
+        instead of internal FalkorDB IDs for portability.
+        """
+        # Hop 1: direct neighbors
         result = self.graph.query(
             """
-            MATCH p=(n)-[*1..3]-(m)
-            WHERE id(n) IN $node_ids
-            RETURN p
+            MATCH (n)-[r]-(m)
+            WHERE n.task_id IN $node_ids
+               OR n.entity_id IN $node_ids
+               OR n.reg_id IN $node_ids
+               OR n.incident_id IN $node_ids
+               OR n.process_id IN $node_ids
+            RETURN COALESCE(n.name, n.task_id, n.entity_id, n.reg_id, n.incident_id, n.process_id) AS src,
+                   COALESCE(m.name, m.task_id, m.entity_id, m.reg_id, m.incident_id, m.process_id) AS dst,
+                   type(r) AS rel_type
             LIMIT 20
             """,
             {'node_ids': node_ids}
+        )
+        return result.result_set or []
+
+    # ========================================================================
+    # NEW: Graph-powered methods for the agent (close the demo-graph gap)
+    # ========================================================================
+
+    def get_playbook_steps_graph(self, incident_type: str) -> list:
+        """Get playbook steps by traversing the graph.
+
+        Traverses: Playbook →HAS_STEP→ StepTemplate →CONTACT→ Person
+        Returns structured steps with deadlines, contacts, legal citations.
+        This replaces the hardcoded get_playbook() dict.
+        """
+        result = self.graph.query(
+            """
+            MATCH (pb:Playbook {incident_type: $incident_type})-[hs:HAS_STEP]->(step:StepTemplate)
+            OPTIONAL MATCH (step)-[:CONTACT]->(contact:Person)
+            RETURN pb.name AS playbook_name,
+                   pb.source_citation AS source,
+                   step.step_id AS step_id,
+                   step.name AS step_name,
+                   hs.order AS step_order,
+                   hs.amount AS amount,
+                   hs.unit AS unit,
+                   hs.trigger AS trigger,
+                   contact.name AS contact_name,
+                   contact.role AS contact_role,
+                   hs.legal_citation AS legal_basis
+            ORDER BY hs.order
+            """,
+            {'incident_type': incident_type}
+        )
+        return result.result_set or []
+
+    def get_tasks_with_context(self) -> list:
+        """Get all tasks with their graph context: compliance, dependencies, process.
+
+        This is the graph-powered replacement for get_demo_tasks().
+        Returns tasks with their full relationship context from the graph,
+        enabling automation assessment that considers graph structure.
+        """
+        result = self.graph.query(
+            """
+            MATCH (t:Task)
+            OPTIONAL MATCH (t)-[:COMPLIES_WITH]->(r:Regulation)
+            OPTIONAL MATCH (t)-[:DEPENDS_ON]->(d:Task)
+            OPTIONAL MATCH (p:Process)-[:HAS_TASK]->(t)
+            RETURN t.task_id AS task_id,
+                   t.name AS name,
+                   t.description AS description,
+                   t.frequency_per_year AS frequency_per_year,
+                   t.time_per_exec_hours AS time_per_exec_hours,
+                   t.labor_rate_dollars AS labor_rate_dollars,
+                   t.structuredness AS structuredness,
+                   t.data_accessibility AS data_accessibility,
+                   t.decision_complexity AS decision_complexity,
+                   t.exception_rate AS exception_rate,
+                   t.error_cost_dollars AS error_cost_dollars,
+                   t.compliance_risk AS compliance_risk,
+                   t.implementation_cost_annual AS implementation_cost_annual,
+                   collect(DISTINCT r.name) AS regulations,
+                   collect(DISTINCT r.jurisdiction) AS regulation_jurisdictions,
+                   collect(DISTINCT d.task_id) AS depends_on,
+                   p.name AS process_name
+            ORDER BY t.name
+            """
+        )
+        return result.result_set or []
+
+    def get_compliance_gaps(self) -> list:
+        """Find tasks that should comply with regulations but don't.
+
+        Identifies tasks with high compliance_risk (>0.5) that lack
+        COMPLIES_WITH edges — potential compliance gaps.
+        This is a uniquely graph-powered insight.
+        """
+        result = self.graph.query(
+            """
+            MATCH (t:Task)
+            WHERE t.compliance_risk > 0.3
+            OPTIONAL MATCH (t)-[:COMPLIES_WITH]->(r:Regulation)
+            WITH t, collect(r) AS regs
+            WHERE size(regs) = 0
+            RETURN t.task_id AS task_id,
+                   t.name AS name,
+                   t.compliance_risk AS risk,
+                   t.description AS description
+            ORDER BY t.compliance_risk DESC
+            """
+        )
+        return result.result_set or []
+
+    def get_regulation_impact(self, reg_id: str) -> list:
+        """Find all tasks and processes affected by a regulation.
+
+        Traverses: Regulation ←COMPLIES_WITH- Task -HAS_TASK→ Process
+        Returns the blast radius of a regulatory change.
+        """
+        result = self.graph.query(
+            """
+            MATCH (r:Regulation {reg_id: $reg_id})<-[:COMPLIES_WITH]-(t:Task)
+            OPTIONAL MATCH (p:Process)-[:HAS_TASK]->(t)
+            OPTIONAL MATCH (t)-[:DEPENDS_ON]->(downstream:Task)
+            RETURN t.task_id AS task_id,
+                   t.name AS task_name,
+                   t.compliance_risk AS compliance_risk,
+                   p.name AS process_name,
+                   collect(DISTINCT downstream.name) AS downstream_tasks
+            ORDER BY t.compliance_risk DESC
+            """,
+            {'reg_id': reg_id}
+        )
+        return result.result_set or []
+
+    def get_process_critical_path(self, process_id: str) -> list:
+        """Find the critical path through a process using graph traversal.
+
+        Uses DEPENDS_ON edges to find the longest chain of dependent tasks.
+        Uses explicit multi-hop BFS (not variable-length paths) for FalkorDB compatibility.
+        """
+        result = self.graph.query(
+            """
+            MATCH (p:Process {process_id: $process_id})-[:HAS_TASK]->(t:Task)
+            OPTIONAL MATCH (t)-[:DEPENDS_ON]->(d1:Task)
+            OPTIONAL MATCH (d1)-[:DEPENDS_ON]->(d2:Task)
+            OPTIONAL MATCH (d2)-[:DEPENDS_ON]->(d3:Task)
+            OPTIONAL MATCH (d3)-[:DEPENDS_ON]->(d4:Task)
+            WITH t,
+                 CASE WHEN d4 IS NOT NULL THEN 4
+                      WHEN d3 IS NOT NULL THEN 3
+                      WHEN d2 IS NOT NULL THEN 2
+                      WHEN d1 IS NOT NULL THEN 1
+                      ELSE 0 END AS depth,
+                 [x IN [d1, d2, d3, d4] WHERE x IS NOT NULL | x.name] AS chain
+            RETURN t.task_id AS task_id,
+                   t.name AS task_name,
+                   t.time_per_exec_hours AS time_hours,
+                   depth AS dependency_depth,
+                   chain AS dependency_chain
+            ORDER BY depth DESC, t.time_per_exec_hours DESC
+            """,
+            {'process_id': process_id}
+        )
+        return result.result_set or []
+
+    def get_vendor_risk_propagation(self, vendor_id: str) -> list:
+        """Get vendor risk propagated through the graph.
+
+        Combines cascade impact with compliance context:
+        Vendor → Process → Task → Regulation
+        Shows not just what breaks, but what compliance obligations are at risk.
+        """
+        result = self.graph.query(
+            """
+            MATCH (v:Vendor {entity_id: $vendor_id})-[:PROVIDES_SERVICE_FOR]->(target)
+            OPTIONAL MATCH (target)-[:HAS_TASK]->(t:Task)
+            OPTIONAL MATCH (t)-[:COMPLIES_WITH]->(r:Regulation)
+            WITH v, target, t, r,
+                 CASE WHEN target:Process THEN 'Process' ELSE 'Task' END AS target_type
+            RETURN target.name AS entity_name,
+                   target_type,
+                   t.name AS task_name,
+                   r.name AS regulation,
+                   r.jurisdiction AS jurisdiction,
+                   t.compliance_risk AS task_risk
+            ORDER BY target_type, target.name
+            """,
+            {'vendor_id': vendor_id}
+        )
+        return result.result_set or []
+
+    def get_task_embedding(self, task_id: str) -> list:
+        """Get the stored embedding vector for a task."""
+        result = self.graph.query(
+            "MATCH (t:Task {task_id: $task_id}) RETURN t.embedding",
+            {'task_id': task_id}
+        )
+        if result.result_set and result.result_set[0][0]:
+            return result.result_set[0][0]
+        return None
+
+    def get_similar_tasks_graph(self, task_id: str, k: int = 5) -> list:
+        """Find tasks similar to a given task using vector search + graph context.
+
+        Combines HNSW vector similarity with graph structure:
+        finds tasks with similar embeddings that also share process/regulation context.
+        """
+        embedding = self.get_task_embedding(task_id)
+        if not embedding:
+            return []
+
+        result = self.graph.query(
+            """
+            CALL db.idx.vector.queryNodes('Task', 'embedding', $k, vecf32($qv))
+            YIELD node, score
+            WHERE node.task_id <> $exclude_id
+            OPTIONAL MATCH (node)-[:COMPLIES_WITH]->(r:Regulation)
+            RETURN node.task_id AS task_id,
+                   node.name AS name,
+                   score,
+                   collect(DISTINCT r.name) AS shared_regulations
+            ORDER BY score DESC
+            """,
+            {'k': k, 'qv': embedding, 'exclude_id': task_id}
+        )
+        return result.result_set or []
+
+    def get_incident_timeline(self, incident_id: str) -> list:
+        """Get the full incident timeline from the graph.
+
+        Traverses: Incident →TRIGGERS→ Playbook →HAS_STEP→ StepTemplate →CONTACT→ Person
+        Returns the complete response plan for a specific incident.
+        """
+        result = self.graph.query(
+            """
+            MATCH (i:Incident {incident_id: $incident_id})-[:TRIGGERS]->(pb:Playbook)
+            OPTIONAL MATCH (pb)-[hs:HAS_STEP]->(step:StepTemplate)
+            OPTIONAL MATCH (step)-[:CONTACT]->(contact:Person)
+            RETURN i.incident_id AS incident_id,
+                   i.type AS incident_type,
+                   i.severity AS severity,
+                   pb.name AS playbook_name,
+                   step.name AS step_name,
+                   hs.order AS step_order,
+                   hs.amount AS amount,
+                   hs.unit AS unit,
+                   contact.name AS contact_name,
+                   contact.role AS contact_role,
+                   hs.legal_citation AS legal_basis
+            ORDER BY hs.order
+            """,
+            {'incident_id': incident_id}
         )
         return result.result_set or []
 

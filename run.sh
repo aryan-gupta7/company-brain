@@ -38,7 +38,7 @@ echo ""
 
 # --- Fetch SEC breach data ---
 echo "Fetching SEC 8-K Item 1.05 breach disclosures..."
-uv run python -m demo.fetch_sec_breaches --count 20 2>&1 | grep -v "^$"
+uv run python -m demo.fetch_sec_breaches --count 100 2>&1 | grep -v "^$"
 echo ""
 
 # --- Run tests ---
@@ -105,6 +105,10 @@ echo "======================================================================"
 echo ""
 echo "  To try the interactive CLI:"
 echo "    uv run python -m cli.interactive"
+echo ""
+echo "  To start the web frontend:"
+echo "    PYTHONPATH=src uv run python -m web.server"
+echo "    → http://localhost:8000"
 echo ""
 echo "  FalkorDB GUI: http://localhost:3001"
 echo ""

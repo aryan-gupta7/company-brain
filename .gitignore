@@ -1,10 +1,20 @@
-# Python-generated files
 __pycache__/
-*.py[oc]
-build/
+*.pyc
+*.pyo
+.venv/
+venv/
+.uv/
+*.egg-info/
 dist/
-wheels/
-*.egg-info
+build/
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+*.log
 
-# Virtual environments
-.venv
+# Research / scratch files (not part of submission)
+RAG_at_a_million_docs_system_design.txt
+hackathon_info.txt
+research_output/

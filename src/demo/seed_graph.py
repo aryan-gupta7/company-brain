@@ -49,6 +49,34 @@ REGULATIONS = [
         'citation': '17 CFR §249.308 — material cybersecurity incidents',
         'effective_date': '2023-12-18',
     },
+    {
+        'reg_id': 'dpdpa_in',
+        'name': 'DPDPA 2023 (India)',
+        'jurisdiction': 'India',
+        'citation': 'Digital Personal Data Protection Act, 2023 — Section 8(6): notify Data Protection Board',
+        'effective_date': '2025-11-13',
+        'breach_notification_hours': 72,
+        'max_penalty_inr': 2500000000,
+        'status': 'In force (phased: core Nov 2025, penalties Nov 2026, remainder May 2027)',
+    },
+    {
+        'reg_id': 'cert_in',
+        'name': 'CERT-In Directive (India)',
+        'jurisdiction': 'India',
+        'citation': 'CERT-In April 2022 Directive (Section 70B, IT Act 2000): 6-hour breach reporting',
+        'effective_date': '2022-04-28',
+        'breach_notification_hours': 6,
+        'status': 'In force since April 2022',
+    },
+    {
+        'reg_id': 'it_act_india',
+        'name': 'IT Act 2000 (India)',
+        'jurisdiction': 'India',
+        'citation': 'Information Technology Act, 2000 — Section 72A: breach of confidentiality',
+        'effective_date': '2000-06-17',
+        'max_penalty_inr': 500000,
+        'status': 'In force',
+    },
 ]
 
 

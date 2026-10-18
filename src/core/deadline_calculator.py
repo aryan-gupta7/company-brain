@@ -33,6 +33,25 @@ US_FEDERAL_HOLIDAYS_2026 = {
     date(2026, 12, 25), # Christmas Day
 }
 
+# Indian National Holidays 2026 — stored as DATE objects
+# (Used for India-specific business-day computations)
+INDIAN_HOLIDAYS_2026 = {
+    date(2026, 1, 26),  # Republic Day
+    date(2026, 3, 14),  # Holi (approx)
+    date(2026, 3, 26),  # Ram Navami (approx)
+    date(2026, 4, 3),   # Mahavir Jayanti
+    date(2026, 4, 10),  # Good Friday
+    date(2026, 4, 14),  # Ambedkar Jayanti
+    date(2026, 5, 1),   # May Day
+    date(2026, 6, 26),  # Eid al-Adha (approx)
+    date(2026, 8, 15),  # Independence Day
+    date(2026, 9, 18),  # Ganesh Chaturthi (approx)
+    date(2026, 10, 2),  # Gandhi Jayanti
+    date(2026, 10, 20),  # Diwali (approx)
+    date(2026, 11, 4),  # Guru Nanak Jayanti
+    date(2026, 12, 25),  # Christmas
+}
+
 
 def compute_deadline(
     trigger_at: datetime,
@@ -109,6 +128,15 @@ HIPAA_INDIVIDUAL = {'amount': 60, 'unit': 'calendar_days', 'trigger': 'discovery
 HIPAA_HHS_500PLUS = {'amount': 60, 'unit': 'calendar_days', 'trigger': 'discovery'}
 SEC_8K_105 = {'amount': 4, 'unit': 'business_days', 'trigger': 'awareness'}
 
+# --- India regulations ---
+# CERT-In April 2022 Directive: 6-hour breach reporting for high-severity incidents
+# DPDPA 2023: Data Protection Board notification (Section 8(6)) — timeline per rules
+# IT Act Section 72A: Disclosure in breach of contract
+CERT_IN_BREACH = {'amount': 6, 'unit': 'clock_hours', 'trigger': 'detection'}
+DPDPA_BREACH = {'amount': 72, 'unit': 'clock_hours', 'trigger': 'awareness'}
+# Note: DPDPA 2023 phased commencement — core Nov 2025, penalties Nov 2026, rest May 2027
+# CERT-In 6h rule applies to high-severity incidents only (per FAQ clarification)
+
 
 def compute_regulation_deadline(
     regulation: str,
@@ -119,10 +147,14 @@ def compute_regulation_deadline(
         'GDPR_ART33': GDPR_ART33,
         'GDPR_ART34': GDPR_ART34,
         'CCPA_BREACH': CCPA_BREACH,
+        'CCPA_AG_NOTIFY': CCPA_AG_NOTIFY,
         'HIPAA_INDIVIDUAL': HIPAA_INDIVIDUAL,
+        'HIPAA_HHS_500PLUS': HIPAA_HHS_500PLUS,
         'SEC_8K_105': SEC_8K_105,
+        'CERT_IN_BREACH': CERT_IN_BREACH,
+        'DPDPA_BREACH': DPDPA_BREACH,
     }
     if regulation not in templates:
-        raise ValueError(f"Unknown regulation: {regulation!r}")
+        raise ValueError(f"Unknown regulation: {regulation!r}. Available: {list(templates.keys())}")
     t = templates[regulation]
     return compute_deadline(trigger_at, t['amount'], t['unit'])

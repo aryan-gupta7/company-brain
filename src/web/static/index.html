@@ -1,0 +1,1322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Company Brain — FalkorDB Hackathon 2026</title>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<style>
+:root {
+  --bg: #0f1117;
+  --bg-card: #1a1d27;
+  --bg-input: #252833;
+  --text: #e4e6f0;
+  --text-dim: #8b8fa3;
+  --accent: #6c5ce7;
+  --accent-light: #a29bfe;
+  --green: #00cec9;
+  --red: #ff6b6b;
+  --orange: #ffa502;
+  --border: #2d3142;
+  --radius: 12px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* --- Header --- */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+  flex-shrink: 0;
+}
+.header-left { display: flex; align-items: center; gap: 12px; }
+.header h1 { font-size: 18px; font-weight: 600; }
+.header h1 span { color: var(--accent-light); }
+.header-badge {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: var(--accent);
+  color: white;
+  font-weight: 500;
+}
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--green);
+  display: inline-block;
+  margin-right: 4px;
+}
+.status-dot.off { background: var(--red); }
+.header-right { display: flex; gap: 8px; align-items: center; font-size: 12px; color: var(--text-dim); }
+
+/* --- Demo Mode Banner --- */
+.demo-banner {
+  display: none;
+  background: rgba(255,165,2,0.15);
+  border-bottom: 1px solid var(--orange);
+  padding: 8px 24px;
+  font-size: 12px;
+  color: var(--orange);
+  text-align: center;
+  flex-shrink: 0;
+}
+.demo-banner.visible { display: block; }
+
+/* --- Main Layout --- */
+.main { display: flex; flex: 1; overflow: hidden; }
+
+/* --- Left Panel: Chat --- */
+.chat-panel {
+  width: 420px;
+  min-width: 380px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.chat-msg { display: flex; flex-direction: column; gap: 4px; }
+.chat-msg.user { align-items: flex-end; }
+.chat-msg .bubble {
+  max-width: 90%;
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.chat-msg.user .bubble { background: var(--accent); color: white; border-bottom-right-radius: 4px; }
+.chat-msg.agent .bubble { background: var(--bg-card); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+.chat-msg .role { font-size: 11px; color: var(--text-dim); padding: 0 4px; }
+
+/* Structured data in chat */
+.result-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+.result-card h3 { font-size: 14px; margin-bottom: 12px; color: var(--accent-light); }
+.result-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.result-row:last-child { border-bottom: none; }
+.result-row .label { color: var(--text-dim); }
+.result-row .value { font-weight: 500; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+.deadline-item {
+  padding: 10px 12px;
+  margin: 6px 0;
+  background: var(--bg-input);
+  border-radius: 8px;
+  border-left: 3px solid var(--accent);
+}
+.deadline-item .step-name { font-weight: 500; font-size: 13px; }
+.deadline-item .step-deadline { color: var(--green); font-family: monospace; font-size: 12px; }
+.deadline-item .step-contact { color: var(--text-dim); font-size: 11px; }
+.disclaimer { color: var(--orange); font-size: 11px; margin-top: 10px; padding: 8px; background: rgba(255,165,2,0.1); border-radius: 6px; }
+
+/* Scores table */
+.scores-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+.scores-table th { text-align: left; padding: 6px 8px; color: var(--text-dim); font-weight: 500; border-bottom: 1px solid var(--border); }
+.scores-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-family: 'SF Mono', 'Fira Code', monospace; }
+.scores-table tr:hover td { background: var(--bg-input); }
+.quadrant-q1 { color: #00cec9; }
+.quadrant-q2 { color: #ffa502; }
+.quadrant-q3 { color: #ff6b6b; }
+.quadrant-q4 { color: #a29bfe; }
+
+/* Quadrant canvas */
+.quadrant-canvas {
+  width: 100%;
+  height: 280px;
+  background: var(--bg-input);
+  border-radius: 8px;
+  margin: 10px 0;
+  cursor: crosshair;
+  display: block;
+}
+
+/* Cascade / extraction sections */
+.section-title { font-size: 12px; color: var(--text-dim); margin: 12px 0 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+.affected-list { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.affected-tag {
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+}
+.affected-tag.process { border-color: #ffa502; color: #ffa502; }
+.affected-tag.task { border-color: #00cec9; color: #00cec9; }
+.affected-tag.compliance { border-color: #ff6b6b; color: #ff6b6b; }
+
+/* Evidence trail */
+.evidence-trail {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: rgba(108,92,231,0.08);
+  border-radius: 6px;
+  border-left: 2px solid var(--accent);
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.evidence-trail .ev-title { color: var(--accent-light); margin-bottom: 4px; }
+
+/* Similar incidents */
+.similar-item {
+  padding: 8px 12px;
+  margin: 4px 0;
+  background: var(--bg-input);
+  border-radius: 6px;
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.similar-item .sim-score { color: var(--green); font-family: monospace; }
+
+/* Chat Input */
+.chat-input-area {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-card);
+}
+.chat-input-row { display: flex; gap: 8px; }
+.chat-input {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  resize: none;
+  font-family: inherit;
+}
+.chat-input:focus { border-color: var(--accent); }
+.chat-send {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0 20px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.chat-send:hover { background: var(--accent-light); }
+.chat-send:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.quick-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.quick-btn {
+  font-size: 11px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.quick-btn:hover { border-color: var(--accent); color: var(--accent-light); }
+
+/* --- Right Panel --- */
+.graph-panel { flex: 1; display: flex; flex-direction: column; position: relative; }
+.graph-toolbar {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.graph-toolbar h2 { font-size: 14px; font-weight: 500; }
+.graph-toolbar .stats { font-size: 12px; color: var(--text-dim); }
+#graph-network { flex: 1; background: var(--bg); }
+
+/* --- Tabs --- */
+.tabs { display: flex; gap: 0; }
+.tab {
+  padding: 8px 16px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-dim);
+  cursor: pointer;
+  border-right: none;
+}
+.tab:first-child { border-radius: 6px 0 0 6px; }
+.tab:last-child { border-radius: 0 6px 6px 0; border-right: 1px solid var(--border); }
+.tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+
+/* --- Graph Filters --- */
+.graph-filters {
+  display: none;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.graph-filters.visible { display: flex; }
+.filter-label { font-size: 11px; color: var(--text-dim); margin-right: 4px; }
+.filter-checkbox {
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+.filter-checkbox.active { border-color: var(--accent); color: var(--accent-light); }
+.filter-checkbox input { display: none; }
+.physics-toggle {
+  font-size: 11px;
+  padding: 3px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  color: var(--text-dim);
+  cursor: pointer;
+  margin-left: auto;
+}
+.physics-toggle.active { border-color: var(--green); color: var(--green); }
+
+/* --- Node Detail Panel --- */
+.node-detail {
+  display: none;
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  width: 280px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--bg-card);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 14px;
+  font-size: 12px;
+  z-index: 10;
+}
+.node-detail.visible { display: block; }
+.node-detail h4 { color: var(--accent-light); margin-bottom: 8px; font-size: 13px; }
+.node-detail .nd-row { padding: 3px 0; border-bottom: 1px solid var(--border); }
+.node-detail .nd-row:last-child { border-bottom: none; }
+.node-detail .nd-key { color: var(--text-dim); }
+.node-detail .nd-close { position: absolute; top: 8px; right: 10px; cursor: pointer; color: var(--text-dim); }
+
+/* --- Tab Content Views --- */
+.tab-content { display: none; overflow-y: auto; padding: 20px; flex: 1; }
+.tab-content.visible { display: block; }
+
+/* --- SOP Extraction Tab */
+.sop-textarea {
+  width: 100%;
+  min-height: 160px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  color: var(--text);
+  font-size: 13px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  resize: vertical;
+  outline: none;
+}
+.sop-textarea:focus { border-color: var(--accent); }
+.sop-controls { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+.sop-btn {
+  font-size: 12px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  background: var(--accent);
+  color: white;
+  cursor: pointer;
+}
+.sop-btn:hover { background: var(--accent-light); }
+.sop-btn.secondary { background: var(--bg-input); border: 1px solid var(--border); color: var(--text-dim); }
+.sop-btn.secondary:hover { border-color: var(--accent); color: var(--accent-light); }
+.sop-dep-item {
+  padding: 8px 12px;
+  margin: 4px 0;
+  background: var(--bg-input);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.sop-dep-quote { color: var(--text-dim); font-style: italic; font-size: 11px; margin-top: 4px; }
+.sop-validation {
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin: 10px 0;
+  font-size: 12px;
+}
+.sop-validation.valid { background: rgba(0,206,201,0.1); border: 1px solid var(--green); }
+.sop-validation.invalid { background: rgba(255,107,107,0.1); border: 1px solid var(--red); }
+
+/* --- Playbook Tab */
+.playbook-select {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  margin-bottom: 12px;
+}
+.playbook-select:focus { border-color: var(--accent); }
+
+/* --- Loading --- */
+.typing { display: flex; gap: 4px; padding: 4px 0; }
+.typing span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); animation: bounce 1.4s infinite; }
+.typing span:nth-child(2) { animation-delay: 0.2s; }
+.typing span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce { 0%, 80%, 100% { opacity: 0.3; } 40% { opacity: 1; } }
+
+/* --- Scrollbar --- */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="demo-banner" id="demo-banner">⚠️ Demo mode — FalkorDB offline. Using fallback data.</div>
+
+<div class="header">
+  <div class="header-left">
+    <h1>🧠 Company <span>Brain</span></h1>
+    <div class="header-badge">FalkorDB Hackathon 2026</div>
+  </div>
+  <div class="header-right">
+    <span><span class="status-dot" id="db-status"></span> FalkorDB</span>
+    <span><span class="status-dot" id="llm-status"></span> <span id="llm-label">LLM</span></span>
+  </div>
+</div>
+
+<div class="main">
+  <!-- Left: Chat -->
+  <div class="chat-panel">
+    <div class="chat-messages" id="chat-messages">
+      <div class="chat-msg agent">
+        <div class="role">Company Brain</div>
+        <div class="bubble">
+          I'm your Company Brain — an AI agent backed by a Process Knowledge Graph in FalkorDB.<br><br>
+          I can help with:<br>
+          📋 <b>Incident Response</b> — data breach, ransomware playbooks<br>
+          📊 <b>Automation Assessment</b> — what to automate and why<br>
+          🔗 <b>Cascade Analysis</b> — vendor failure blast radius<br>
+          ⚖️ <b>Compliance</b> — GDPR, CCPA, HIPAA, DPDPA, CERT-In deadlines<br>
+          📄 <b>SOP Extraction</b> — parse documents into process graphs
+        </div>
+      </div>
+    </div>
+    <div class="chat-input-area">
+      <div class="chat-input-row">
+        <textarea class="chat-input" id="chat-input" rows="2" placeholder="Ask about incidents, automation, compliance, cascades..."></textarea>
+        <button class="chat-send" id="chat-send" onclick="sendQuery()">Send</button>
+      </div>
+      <div class="quick-actions">
+        <button class="quick-btn" onclick="quickSend('data breach detected')">🚨 Data breach</button>
+        <button class="quick-btn" onclick="quickSend('what can we automate?')">🤖 Automation</button>
+        <button class="quick-btn" onclick="quickSend('GDPR deadlines')">⚖️ GDPR</button>
+        <button class="quick-btn" onclick="quickSend('blast radius of CloudHost going down')">💥 Cascade</button>
+        <button class="quick-btn" onclick="switchTabExt('sop')">📄 SOP Extract</button>
+        <button class="quick-btn" onclick="switchTabExt('graph')">🕸️ Graph</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Panels -->
+  <div class="graph-panel">
+    <div class="graph-toolbar">
+      <h2 id="panel-title">Knowledge Graph</h2>
+      <div class="stats" id="graph-stats">Loading...</div>
+      <div style="flex:1"></div>
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab('graph', this)">Graph</div>
+        <div class="tab" onclick="switchTab('sop', this)">SOP Extract</div>
+        <div class="tab" onclick="switchTab('playbook', this)">Playbook</div>
+        <div class="tab" onclick="switchTab('regulations', this)">Regulations</div>
+        <div class="tab" onclick="switchTab('vendors', this)">Vendors</div>
+      </div>
+    </div>
+
+    <!-- Graph Filters (visible only on graph tab) -->
+    <div class="graph-filters visible" id="graph-filters">
+      <span class="filter-label">Filter:</span>
+      <label class="filter-checkbox active" data-group="Playbook"><input type="checkbox" checked> Playbook</label>
+      <label class="filter-checkbox active" data-group="Task"><input type="checkbox" checked> Task</label>
+      <label class="filter-checkbox active" data-group="Person"><input type="checkbox" checked> Person</label>
+      <label class="filter-checkbox active" data-group="Process"><input type="checkbox" checked> Process</label>
+      <label class="filter-checkbox active" data-group="Document"><input type="checkbox" checked> Document</label>
+      <label class="filter-checkbox active" data-group="Regulation"><input type="checkbox" checked> Regulation</label>
+      <label class="filter-checkbox active" data-group="Incident"><input type="checkbox" checked> Incident</label>
+      <label class="filter-checkbox active" data-group="Vendor"><input type="checkbox" checked> Vendor</label>
+      <span class="physics-toggle active" id="physics-toggle" onclick="togglePhysics()">⚡ Physics</span>
+    </div>
+
+    <div id="graph-network"></div>
+    <div id="tab-sop" class="tab-content"></div>
+    <div id="tab-playbook" class="tab-content"></div>
+    <div id="tab-regulations" class="tab-content"></div>
+    <div id="tab-vendors" class="tab-content"></div>
+
+    <!-- Node detail popup -->
+    <div class="node-detail" id="node-detail">
+      <span class="nd-close" onclick="closeNodeDetail()">✕</span>
+      <h4 id="nd-title">Node Details</h4>
+      <div id="nd-body"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const chatMessages = document.getElementById('chat-messages');
+const chatInput = document.getElementById('chat-input');
+const chatSend = document.getElementById('chat-send');
+let network = null;
+let allNodes = null;
+let allEdges = null;
+let physicsEnabled = true;
+let activeFilters = new Set(['Playbook','Task','Person','Process','Document','Regulation','Incident','Vendor']);
+
+// --- Health check ---
+async function checkHealth() {
+  try {
+    const r = await fetch('/api/health');
+    const d = await r.json();
+    document.getElementById('db-status').className = 'status-dot' + (d.falkordb ? '' : ' off');
+    document.getElementById('llm-status').className = 'status-dot' + (d.llm ? '' : ' off');
+    document.getElementById('llm-label').textContent = d.llm ? d.model || 'LLM' : 'Keywords';
+    if (!d.falkordb) {
+      document.getElementById('demo-banner').classList.add('visible');
+    }
+  } catch(e) {
+    document.getElementById('db-status').className = 'status-dot off';
+    document.getElementById('llm-status').className = 'status-dot off';
+    document.getElementById('demo-banner').classList.add('visible');
+  }
+}
+checkHealth();
+
+// --- Chat ---
+function addMessage(role, html) {
+  const div = document.createElement('div');
+  div.className = `chat-msg ${role}`;
+  div.innerHTML = `<div class="role">${role === 'user' ? 'You' : 'Company Brain'}</div><div class="bubble">${html}</div>`;
+  chatMessages.appendChild(div);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function addTyping() {
+  const div = document.createElement('div');
+  div.className = 'chat-msg agent';
+  div.id = 'typing-msg';
+  div.innerHTML = `<div class="role">Company Brain</div><div class="bubble"><div class="typing"><span></span><span></span><span></span></div></div>`;
+  chatMessages.appendChild(div);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function removeTyping() {
+  const el = document.getElementById('typing-msg');
+  if (el) el.remove();
+}
+
+async function sendQuery() {
+  const query = chatInput.value.trim();
+  if (!query) return;
+  chatInput.value = '';
+  addMessage('user', query);
+  addTyping();
+  chatSend.disabled = true;
+
+  try {
+    const r = await fetch('/api/query', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({query})
+    });
+    const data = await r.json();
+    removeTyping();
+    renderAgentResponse(data);
+  } catch(e) {
+    removeTyping();
+    addMessage('agent', `Error: ${e.message}`);
+  }
+  chatSend.disabled = false;
+}
+
+function quickSend(text) {
+  chatInput.value = text;
+  sendQuery();
+}
+
+chatInput.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendQuery(); }
+});
+
+// ============================================================================
+// RESPONSE RENDERING — Priority 0 fixes
+// ============================================================================
+
+function renderAgentResponse(data) {
+  let html = '';
+
+  if (data.llm_summary) {
+    html += `<div style="color:var(--accent-light);margin-bottom:8px;">${data.llm_summary}</div>`;
+  }
+
+  if (data.intent === 'incident_response' && data.steps) {
+    html += renderIncidentResponse(data);
+  } else if (data.intent === 'automation_assessment') {
+    html += renderAutomationAssessment(data);
+  } else if (data.intent === 'compliance_check') {
+    html += renderComplianceCheck(data);
+  } else if (data.intent === 'cascade_analysis') {
+    html += renderCascadeAnalysis(data);
+  } else if (data.intent === 'process_extraction') {
+    html += renderProcessExtraction(data);
+  } else {
+    html += data.response || "I can help with incident response, automation assessment, process extraction, cascade analysis, and compliance checking.";
+  }
+
+  addMessage('agent', html);
+}
+
+// --- INCIDENT RESPONSE ---
+function renderIncidentResponse(data) {
+  let html = `<div class="result-card">`;
+  html += `<h3>📋 ${data.playbook_name || 'Incident Response'}</h3>`;
+  html += `<div style="font-size:12px;color:var(--text-dim);margin-bottom:8px;">Source: ${data.playbook_source || 'NIST SP 800-61'} | Detected: ${data.detected_at ? new Date(data.detected_at).toLocaleString() : 'N/A'}</div>`;
+  data.steps.forEach(s => {
+    html += `<div class="deadline-item">`;
+    html += `<div class="step-name">${s.order}. ${s.name}</div>`;
+    html += `<div class="step-deadline">⏱ ${s.deadline}</div>`;
+    html += `<div class="step-contact">👤 ${s.contact} (${s.contact_role})${s.legal_basis ? ' | ' + s.legal_basis : ''}</div>`;
+    html += `</div>`;
+  });
+  if (data.similar_incidents && data.similar_incidents.length > 0) {
+    html += `<div class="section-title">Similar Incidents (Vector Search)</div>`;
+    data.similar_incidents.forEach(si => {
+      html += `<div class="similar-item">`;
+      html += `<span>${si.company} — ${si.type} (${si.severity})</span>`;
+      html += `<span class="sim-score">${si.score.toFixed(2)}</span>`;
+      html += `</div>`;
+    });
+  }
+  if (data.disclaimer) html += `<div class="disclaimer">${data.disclaimer}</div>`;
+  if (data.evidence) html += renderEvidence(data.evidence);
+  html += `</div>`;
+  return html;
+}
+
+// --- AUTOMATION ASSESSMENT (FIXED: scores table + quadrant canvas + graph context) ---
+function renderAutomationAssessment(data) {
+  let html = `<div class="result-card"><h3>📊 Automation Assessment</h3>`;
+
+  if (data.scores && data.scores.length > 0) {
+    // Scores table
+    html += `<table class="scores-table"><thead><tr>`;
+    html += `<th>Task</th><th>Feasibility</th><th>Impact</th><th>Quadrant</th><th>Annual Savings</th><th>Risk Gate</th>`;
+    html += `</tr></thead><tbody>`;
+    data.scores.forEach(s => {
+      const qClass = 'quadrant-' + (s.quadrant || 'q1').toLowerCase().replace(' ', '');
+      html += `<tr>`;
+      html += `<td>${s.task_name}</td>`;
+      html += `<td>${(s.feasibility * 100).toFixed(0)}%</td>`;
+      html += `<td>$${s.impact_dollars?.toLocaleString() || '0'}</td>`;
+      html += `<td class="${qClass}">${s.quadrant || '—'}</td>`;
+      html += `<td>$${s.annual_savings?.toLocaleString() || '0'}</td>`;
+      html += `<td>${s.risk_gate || '—'}</td>`;
+      html += `</tr>`;
+    });
+    html += `</tbody></table>`;
+
+    // Quadrant canvas scatter plot (unique ID per render to avoid collisions)
+    const canvasId = 'qc-' + Date.now() + '-' + Math.floor(Math.random() * 10000);
+    html += `<div class="section-title">Feasibility × Impact Quadrant</div>`;
+    html += `<canvas class="quadrant-canvas" id="${canvasId}"></canvas>`;
+
+    // Graph context
+    if (data.graph_context && data.graph_context.length > 0) {
+      html += `<div class="section-title">Graph Context</div>`;
+      html += `<div style="font-size:11px;color:var(--text-dim);">`;
+      data.graph_context.forEach(gc => {
+        const regs = (gc.regulations || []).filter(r => r).join(', ') || 'none';
+        html += `<div style="padding:3px 0;">${gc.task_id} → ${gc.process} | regs: ${regs} | downstream: ${gc.downstream_deps}</div>`;
+      });
+      html += `</div>`;
+    }
+
+    // Draw canvas after DOM insert
+    setTimeout(() => drawQuadrantCanvas(data.scores, canvasId), 50);
+  } else {
+    html += `<p style="color:var(--text-dim);">${data.response || 'No tasks available for assessment.'}</p>`;
+  }
+
+  html += `<div style="font-size:12px;margin-top:8px;"><b>Framework:</b> ${data.framework || 'Feasibility × Impact'}</div>`;
+  html += `<div style="font-size:12px;"><b>Methodology:</b> ${data.methodology || 'Gated feasibility × hours/year'}</div>`;
+  if (data.evidence) html += renderEvidence(data.evidence);
+  html += `</div>`;
+  return html;
+}
+
+function drawQuadrantCanvas(scores, canvasId) {
+  const canvas = document.getElementById(canvasId || 'quadrant-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  ctx.scale(dpr, dpr);
+  const W = rect.width;
+  const H = rect.height;
+  const pad = 40;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = '#252833';
+  ctx.fillRect(0, 0, W, H);
+
+  // Quadrant lines
+  ctx.strokeStyle = '#3d4152';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(pad, H / 2);
+  ctx.lineTo(W - pad, H / 2);
+  ctx.moveTo(W / 2, pad);
+  ctx.lineTo(W / 2, H - pad);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Axis labels
+  ctx.fillStyle = '#8b8fa3';
+  ctx.font = '11px -apple-system, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Feasibility →', W / 2, H - 8);
+  ctx.save();
+  ctx.translate(12, H / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Impact ($)', 0, 0);
+  ctx.restore();
+
+  // Quadrant labels
+  ctx.font = '10px -apple-system, sans-serif';
+  ctx.fillStyle = 'rgba(139,143,163,0.5)';
+  ctx.fillText('Q1: Quick Wins', W * 0.25, pad + 4);
+  ctx.fillText('Q2: High Value', W * 0.75, pad + 4);
+  ctx.fillText('Q3: Low Priority', W * 0.25, H - pad - 4);
+  ctx.fillText('Q4: Strategic', W * 0.75, H - pad - 4);
+
+  // Plot bubbles
+  const maxSavings = Math.max(...scores.map(s => s.annual_savings || 1), 1);
+  const colors = { 'Q1': '#00cec9', 'Q2': '#ffa502', 'Q3': '#ff6b6b', 'Q4': '#a29bfe' };
+
+  scores.forEach(s => {
+    const x = pad + (s.feasibility || 0) * (W - 2 * pad);
+    const y = H - pad - ((s.impact_dollars || 0) / (maxSavings * 2)) * (H - 2 * pad);
+    const radius = 4 + Math.sqrt((s.annual_savings || 0) / maxSavings) * 16;
+    const q = s.quadrant || 'Q1';
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = (colors[q] || '#6c5ce7') + 'cc';
+    ctx.fill();
+    ctx.strokeStyle = colors[q] || '#6c5ce7';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+}
+
+// --- COMPLIANCE CHECK ---
+function renderComplianceCheck(data) {
+  let html = `<div class="result-card"><h3>⚖️ Compliance Check</h3>`;
+  html += `<p style="color:var(--text-dim);margin-bottom:8px;">${data.response || ''}</p>`;
+  if (data.india_details && data.india_details.length > 0) {
+    html += `<div class="section-title">India Framework</div>`;
+    data.india_details.forEach(d => {
+      html += `<div class="deadline-item">`;
+      html += `<div class="step-name">${d.name}</div>`;
+      html += `<div class="step-deadline">⏱ ${d.deadline}</div>`;
+      html += `<div class="step-contact">Applies to: ${d.applies_to} | Penalty: ${d.penalty}</div>`;
+      html += `</div>`;
+    });
+  }
+  if (data.compliance_gaps && data.compliance_gaps.length > 0) {
+    html += `<div class="section-title">Compliance Gaps (${data.compliance_gaps.length})</div>`;
+    data.compliance_gaps.forEach(g => {
+      html += `<div class="similar-item">`;
+      html += `<span>${g.name} (risk: ${g.risk})</span>`;
+      html += `<span class="sim-score">No edges</span>`;
+      html += `</div>`;
+    });
+  }
+  if (data.regulations) html += `<div style="font-size:12px;margin-top:8px;"><b>All Frameworks:</b> ${data.regulations.map(r => r.name).join(', ')}</div>`;
+  if (data.disclaimer) html += `<div class="disclaimer">${data.disclaimer}</div>`;
+  if (data.evidence) html += renderEvidence(data.evidence);
+  html += `</div>`;
+  return html;
+}
+
+// --- CASCADE ANALYSIS (FIXED: blast radius + affected entities + compliance) ---
+function renderCascadeAnalysis(data) {
+  let html = `<div class="result-card"><h3>🔗 Cascade Analysis</h3>`;
+
+  if (data.available_vendors) {
+    html += `<p style="color:var(--text-dim);margin-bottom:8px;">${data.response || 'Specify a vendor to analyze.'}</p>`;
+    html += `<div class="section-title">Available Vendors</div>`;
+    data.available_vendors.forEach(v => {
+      html += `<div class="similar-item" style="cursor:pointer;" onclick="quickSend('blast radius of ${v.name} going down')">`;
+      html += `<span>${v.name} (${v.type})</span>`;
+      html += `<span class="sim-score">Risk: ${v.risk_score ?? 'N/A'}</span>`;
+      html += `</div>`;
+    });
+  } else {
+    html += `<div style="font-size:13px;margin-bottom:10px;">`;
+    html += `<b>${data.total_entities_affected || data.blast_radius || 0} entities affected</b> by vendor <code style="background:var(--bg-input);padding:2px 6px;border-radius:4px;">${data.vendor_id || 'unknown'}</code>`;
+    html += `</div>`;
+
+    if (data.affected_processes && data.affected_processes.length > 0) {
+      html += `<div class="section-title">Affected Processes</div>`;
+      html += `<div class="affected-list">`;
+      data.affected_processes.forEach(p => {
+        html += `<span class="affected-tag process">${p.name}</span>`;
+      });
+      html += `</div>`;
+    }
+
+    if (data.affected_tasks && data.affected_tasks.length > 0) {
+      html += `<div class="section-title">Affected Tasks</div>`;
+      html += `<div class="affected-list">`;
+      data.affected_tasks.forEach(t => {
+        html += `<span class="affected-tag task">${t.name}</span>`;
+      });
+      html += `</div>`;
+    }
+
+    if (data.compliance_at_risk && data.compliance_at_risk.length > 0) {
+      html += `<div class="section-title">Compliance at Risk</div>`;
+      data.compliance_at_risk.forEach(c => {
+        html += `<div class="similar-item">`;
+        html += `<span>${c.entity} → ${c.task}</span>`;
+        html += `<span class="affected-tag compliance" style="margin:0;">${c.regulation} (${c.jurisdiction})</span>`;
+        html += `</div>`;
+      });
+    }
+  }
+
+  if (data.evidence) html += renderEvidence(data.evidence);
+  html += `</div>`;
+  return html;
+}
+
+// --- PROCESS EXTRACTION (FIXED: was missing, fell through to generic) ---
+function renderProcessExtraction(data) {
+  let html = `<div class="result-card"><h3>📄 Process Extraction</h3>`;
+
+  if (data.documents && data.documents.length > 0) {
+    html += `<div class="section-title">Documents (${data.documents.length})</div>`;
+    data.documents.forEach(d => {
+      html += `<div class="similar-item">`;
+      html += `<span>${d.title} (${d.type})</span>`;
+      html += `<span class="sim-score">${d.doc_id}</span>`;
+      html += `</div>`;
+    });
+  }
+
+  if (data.extracted_processes && data.extracted_processes.length > 0) {
+    html += `<div class="section-title">Extracted Processes</div>`;
+    data.extracted_processes.forEach(ep => {
+      html += `<div class="deadline-item">`;
+      html += `<div class="step-name">${ep.process}</div>`;
+      html += `<div class="step-contact">Tasks: ${ep.task_count} | Dependencies: ${ep.dependency_count}</div>`;
+      html += `<div class="step-deadline">${ep.valid ? '✅ Valid (no cycles)' : '❌ Cycles detected'}</div>`;
+      if (ep.critical_path && ep.critical_path.length > 0) {
+        html += `<div style="font-size:11px;color:var(--text-dim);">Critical path: ${ep.critical_path.join(' → ')}</div>`;
+      }
+      html += `</div>`;
+    });
+  }
+
+  if (data.pipeline) {
+    html += `<div style="font-size:12px;margin-top:8px;"><b>Pipeline:</b> ${data.pipeline}</div>`;
+  }
+  if (data.evidence) html += renderEvidence(data.evidence);
+  html += `</div>`;
+  return html;
+}
+
+// --- Evidence trail helper ---
+function renderEvidence(evidence) {
+  if (!evidence || evidence.length === 0) return '';
+  let html = `<div class="evidence-trail">`;
+  html += `<div class="ev-title">🔍 Evidence Trail</div>`;
+  evidence.forEach(e => { html += `<div>${e}</div>`; });
+  html += `</div>`;
+  return html;
+}
+
+// ============================================================================
+// TAB SWITCHING
+// ============================================================================
+
+async function switchTab(tab, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  if (el) el.classList.add('active');
+
+  const graphDiv = document.getElementById('graph-network');
+  const filtersDiv = document.getElementById('graph-filters');
+  const nodeDetail = document.getElementById('node-detail');
+  const panelTitle = document.getElementById('panel-title');
+
+  // Hide all tab content
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('visible'));
+
+  if (tab === 'graph') {
+    graphDiv.style.display = 'block';
+    filtersDiv.classList.add('visible');
+    panelTitle.textContent = 'Knowledge Graph';
+    if (network) network.fit();
+  } else {
+    graphDiv.style.display = 'none';
+    filtersDiv.classList.remove('visible');
+    nodeDetail.classList.remove('visible');
+  }
+
+  if (tab === 'sop') {
+    panelTitle.textContent = 'SOP Extraction';
+    document.getElementById('tab-sop').classList.add('visible');
+    renderSOPTab();
+  } else if (tab === 'playbook') {
+    panelTitle.textContent = 'Playbook Viewer';
+    document.getElementById('tab-playbook').classList.add('visible');
+    renderPlaybookTab();
+  } else if (tab === 'regulations') {
+    panelTitle.textContent = 'Regulations';
+    document.getElementById('tab-regulations').classList.add('visible');
+    loadRegulations();
+  } else if (tab === 'vendors') {
+    panelTitle.textContent = 'Vendors';
+    document.getElementById('tab-vendors').classList.add('visible');
+    loadVendors();
+  }
+}
+
+function switchTabExt(tab) {
+  // Called from quick buttons — find the tab element
+  const tabs = document.querySelectorAll('.tab');
+  const map = { 'graph': 0, 'sop': 1, 'playbook': 2, 'regulations': 3, 'vendors': 4 };
+  const idx = map[tab];
+  if (idx !== undefined && tabs[idx]) {
+    switchTab(tab, tabs[idx]);
+  }
+}
+
+// ============================================================================
+// GRAPH VISUALIZATION
+// ============================================================================
+
+async function loadGraph() {
+  try {
+    const r = await fetch('/api/graph');
+    const data = await r.json();
+
+    allNodes = new vis.DataSet(data.nodes.map(n => ({
+      id: n.id,
+      label: n.label,
+      group: n.group,
+      fullLabel: n.full_label,
+      properties: n,
+    })));
+
+    allEdges = new vis.DataSet(data.edges.map((e, i) => ({
+      id: i,
+      from: e.from,
+      to: e.to,
+      label: e.label,
+      arrows: 'to',
+      color: { color: '#3d4152', highlight: '#6c5ce7' },
+    })));
+
+    const container = document.getElementById('graph-network');
+    network = new vis.Network(container, { nodes: allNodes, edges: allEdges }, {
+      nodes: {
+        shape: 'dot',
+        size: 16,
+        font: { size: 12, color: '#e4e6f0' },
+        borderWidth: 2,
+      },
+      edges: { smooth: { type: 'continuous' } },
+      physics: {
+        stabilization: false,
+        barnesHut: { gravitationalConstant: -3000, springConstant: 0.04 }
+      },
+      groups: {
+        Playbook: { color: '#6c5ce7' },
+        StepTemplate: { color: '#a29bfe' },
+        Task: { color: '#00cec9' },
+        Person: { color: '#fd79a8' },
+        Process: { color: '#ffa502' },
+        Document: { color: '#74b9ff' },
+        Regulation: { color: '#ff6b6b' },
+        Incident: { color: '#ff7675' },
+        Vendor: { color: '#55efc4' },
+      },
+    });
+
+    // Click node → detail panel
+    network.on("click", function(params) {
+      if (params.nodes.length > 0) {
+        const nodeId = params.nodes[0];
+        const node = allNodes.get(nodeId);
+        if (node) showNodeDetail(node);
+      }
+    });
+
+    document.getElementById('graph-stats').textContent = `${data.nodes.length} nodes, ${data.edges.length} relationships`;
+  } catch(e) {
+    document.getElementById('graph-stats').textContent = 'Graph unavailable: ' + e.message;
+  }
+}
+
+// --- Graph Filters ---
+function applyFilters() {
+  if (!allNodes || !allEdges) return;
+
+  const visibleNodes = allNodes.get().filter(n => activeFilters.has(n.group));
+  const visibleIds = new Set(visibleNodes.map(n => n.id));
+
+  // Filter edges: both endpoints must be visible
+  const visibleEdges = allEdges.get().filter(e => visibleIds.has(e.from) && visibleIds.has(e.to));
+
+  // Reset datasets
+  const hiddenIds = new Set(allNodes.get().filter(n => !activeFilters.has(n.group)).map(n => n.id));
+
+  const updatedNodes = allNodes.get().map(n => ({
+    ...n,
+    hidden: hiddenIds.has(n.id),
+  }));
+
+  allNodes.update(updatedNodes);
+}
+
+document.getElementById('graph-filters').addEventListener('click', function(e) {
+  const label = e.target.closest('.filter-checkbox');
+  if (label) {
+    const group = label.dataset.group;
+    if (activeFilters.has(group)) {
+      activeFilters.delete(group);
+      label.classList.remove('active');
+    } else {
+      activeFilters.add(group);
+      label.classList.add('active');
+    }
+    applyFilters();
+  }
+});
+
+function togglePhysics() {
+  physicsEnabled = !physicsEnabled;
+  document.getElementById('physics-toggle').classList.toggle('active', physicsEnabled);
+  if (network) {
+    network.setOptions({ physics: physicsEnabled });
+  }
+}
+
+function showNodeDetail(node) {
+  const panel = document.getElementById('node-detail');
+  document.getElementById('nd-title').textContent = node.label;
+  let body = '';
+  if (node.properties) {
+    for (const [k, v] of Object.entries(node.properties)) {
+      if (v !== null && v !== undefined && k !== 'full_label') {
+        body += `<div class="nd-row"><span class="nd-key">${k}:</span> ${v}</div>`;
+      }
+    }
+  }
+  document.getElementById('nd-body').innerHTML = body;
+  panel.classList.add('visible');
+}
+
+function closeNodeDetail() {
+  document.getElementById('node-detail').classList.remove('visible');
+}
+
+// ============================================================================
+// SOP EXTRACTION TAB
+// ============================================================================
+
+const INVOICE_SOP = `Invoice Processing Procedure
+
+1. Receive invoice from vendor via email
+2. Match invoice against purchase order
+3. Verify line items and amounts
+4. Check budget approval
+5. Submit for payment approval
+6. Process payment
+7. File paid invoice
+
+After receiving the invoice, match it against the purchase order.
+After matching is complete, verify all line items.
+After verification, check budget approval before submitting.
+After budget approval, submit for payment approval.
+After payment approval, process the payment.
+After payment is processed, file the paid invoice.`;
+
+const ONBOARDING_SOP = `Employee Onboarding Procedure (SOP-HR-003, Rev 2.1)
+
+1. HR receives signed offer letter from candidate
+2. IT creates Active Directory account
+3. IT assigns laptop and equipment
+4. HR schedules first-day orientation
+5. Manager prepares 30-60-90 day plan
+6. HR enrolls employee in benefits portal
+7. IT grants system access (email, VPN, GitHub)
+8. Manager conducts first-week check-in
+
+Dependencies:
+- After receiving the signed offer letter, IT creates the Active Directory account.
+- After the AD account is created, IT assigns a laptop and equipment.
+- After the AD account is created, HR schedules the first-day orientation.
+- After the laptop is assigned, IT grants system access (email, VPN, GitHub).
+- After orientation is scheduled, the Manager prepares the 30-60-90 day plan.
+- After the offer letter is received, HR enrolls the employee in the benefits portal.
+- After system access is granted, the Manager conducts the first-week check-in.`;
+
+function renderSOPTab() {
+  const div = document.getElementById('tab-sop');
+  div.innerHTML = `
+    <h3 style="margin-bottom:12px;">📄 SOP Document Parser</h3>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">Extract tasks, dependencies, and process structure from Standard Operating Procedures.</p>
+    <textarea class="sop-textarea" id="sop-input" placeholder="Paste your SOP document here..."></textarea>
+    <div class="sop-controls">
+      <button class="sop-btn" onclick="extractSOP()">🔍 Extract</button>
+      <button class="sop-btn secondary" onclick="loadSOPExample('invoice')">📋 Invoice SOP</button>
+      <button class="sop-btn secondary" onclick="loadSOPExample('onboarding')">👤 Onboarding SOP</button>
+    </div>
+    <div id="sop-results"></div>
+  `;
+}
+
+function loadSOPExample(type) {
+  const textarea = document.getElementById('sop-input');
+  textarea.value = type === 'invoice' ? INVOICE_SOP : ONBOARDING_SOP;
+}
+
+async function extractSOP() {
+  const sopText = document.getElementById('sop-input').value.trim();
+  if (!sopText) return;
+
+  const resultsDiv = document.getElementById('sop-results');
+  const btn = document.querySelector('#tab-sop .sop-btn');
+  resultsDiv.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Extracting...'; }
+
+  try {
+    const r = await fetch('/api/extract', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({sop_text: sopText})
+    });
+    const data = await r.json();
+    renderSOPResults(data);
+  } catch(e) {
+    resultsDiv.innerHTML = `<div class="sop-invalid sop-validation">Error: ${e.message}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '🔍 Extract'; }
+  }
+}
+
+function renderSOPResults(data) {
+  const div = document.getElementById('sop-results');
+  let html = '';
+
+  // Validation status
+  const v = data.validation || {};
+  html += `<div class="sop-validation ${v.valid ? 'valid' : 'invalid'}">`;
+  html += v.valid ? '✅ Graph valid — no cycles detected' : '❌ Cycles detected in dependency graph';
+  if (v.critical_path && v.critical_path.length > 0) {
+    html += `<div style="margin-top:4px;">Critical path: ${v.critical_path.join(' → ')}</div>`;
+  }
+  if (v.path_length_hours) {
+    html += `<div>Path length: ${v.path_length_hours.toFixed(1)} hours</div>`;
+  }
+  html += `</div>`;
+
+  // Tasks
+  if (data.tasks && data.tasks.length > 0) {
+    html += `<div class="section-title">Tasks Extracted (${data.tasks.length})</div>`;
+    html += `<table class="scores-table"><thead><tr><th>ID</th><th>Name</th><th>Time</th></tr></thead><tbody>`;
+    data.tasks.forEach(t => {
+      html += `<tr><td>${t.task_id}</td><td>${t.name}</td><td>${t.time_per_exec_hours || '—'}h</td></tr>`;
+    });
+    html += `</tbody></table>`;
+  }
+
+  // Dependencies
+  if (data.dependencies && data.dependencies.length > 0) {
+    html += `<div class="section-title">Dependencies (${data.dependencies.length})</div>`;
+    data.dependencies.forEach(d => {
+      html += `<div class="sop-dep-item">`;
+      html += `<div><b>${d.from}</b> → <b>${d.to}</b> <span style="color:var(--green);">(${(d.confidence * 100).toFixed(0)}%)</span></div>`;
+      if (d.source_quote) html += `<div class="sop-dep-quote">"${d.source_quote}"</div>`;
+      html += `</div>`;
+    });
+  }
+
+  // Pipeline
+  html += `<div style="font-size:11px;color:var(--text-dim);margin-top:12px;">Pipeline: Parse → Extract → Span Verify → Validate → User Review</div>`;
+
+  div.innerHTML = html;
+}
+
+// ============================================================================
+// PLAYBOOK VIEWER TAB
+// ============================================================================
+
+async function renderPlaybookTab() {
+  const div = document.getElementById('tab-playbook');
+  div.innerHTML = `
+    <h3 style="margin-bottom:12px;">📋 Playbook Viewer</h3>
+    <p style="font-size:12px;color:var(--text-dim);margin-bottom:12px;">Incident response playbooks from the knowledge graph.</p>
+    <select class="playbook-select" id="playbook-select" onchange="loadPlaybook(this.value)">
+      <option value="">Select incident type...</option>
+      <option value="data_breach">Data Breach</option>
+      <option value="ransomware">Ransomware</option>
+      <option value="phishing">Phishing</option>
+      <option value="ddos">DDoS</option>
+    </select>
+    <div id="playbook-results"></div>
+  `;
+}
+
+async function loadPlaybook(incidentType) {
+  const div = document.getElementById('playbook-results');
+  if (!incidentType) { div.innerHTML = ''; return; }
+
+  div.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+
+  try {
+    const r = await fetch(`/api/playbook/${incidentType}`);
+    if (!r.ok) {
+      div.innerHTML = `<div class="sop-invalid sop-validation">No playbook found for '${incidentType}'</div>`;
+      return;
+    }
+    const steps = await r.json();
+
+    let html = `<div class="section-title">Response Steps (${steps.length})</div>`;
+    steps.forEach(s => {
+      html += `<div class="deadline-item">`;
+      html += `<div class="step-name">${s.order}. ${s.name}</div>`;
+      html += `<div class="step-deadline">⏱ ${s.amount} ${s.unit}${s.trigger ? ' — ' + s.trigger : ''}</div>`;
+      html += `<div class="step-contact">👤 ${s.contact} (${s.contact_role})${s.legal_basis ? ' | ' + s.legal_basis : ''}</div>`;
+      html += `</div>`;
+    });
+
+    // Similar incidents from vector search
+    try {
+      const sr = await fetch('/api/similar', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({text: `${incidentType} security incident`, k: 3})
+      });
+      const similar = await sr.json();
+      if (similar && similar.length > 0) {
+        html += `<div class="section-title">Similar Incidents (Vector Search)</div>`;
+        similar.forEach(si => {
+          html += `<div class="similar-item">`;
+          html += `<span>${si.company_name || si.incident_id} — ${si.type} (${si.severity})</span>`;
+          html += `<span class="sim-score">${si.score.toFixed(2)}</span>`;
+          html += `</div>`;
+        });
+      }
+    } catch(e) { /* vector search optional */ }
+
+    div.innerHTML = html;
+  } catch(e) {
+    div.innerHTML = `<div class="sop-invalid sop-validation">Error: ${e.message}</div>`;
+  }
+}
+
+// ============================================================================
+// REGULATIONS & VENDORS TABS
+// ============================================================================
+
+async function loadRegulations() {
+  const div = document.getElementById('tab-regulations');
+  div.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+  try {
+    const r = await fetch('/api/regulations');
+    const regs = await r.json();
+    let html = `<h3 style="margin-bottom:16px;">Regulations (${regs.length})</h3>`;
+    regs.forEach(reg => {
+      html += `<div class="result-card" style="margin-bottom:12px;">`;
+      html += `<div style="display:flex;justify-content:space-between;align-items:start;">`;
+      html += `<h3 style="color:var(--accent-light);">${reg.name}</h3>`;
+      html += `<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--bg-input);color:var(--text-dim);">${reg.jurisdiction}</span>`;
+      html += `</div>`;
+      html += `<div style="font-size:12px;color:var(--text-dim);margin:4px 0;">${reg.citation || ''}</div>`;
+      html += `<div style="font-size:12px;"><b>Effective:</b> ${reg.effective_date || 'N/A'}</div>`;
+      if (reg.status) html += `<div style="font-size:12px;"><b>Status:</b> ${reg.status}</div>`;
+      html += `</div>`;
+    });
+    div.innerHTML = html;
+  } catch(e) {
+    div.innerHTML = `<div class="sop-invalid sop-validation">Error: ${e.message}</div>`;
+  }
+}
+
+async function loadVendors() {
+  const div = document.getElementById('tab-vendors');
+  div.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+  try {
+    const r = await fetch('/api/vendors');
+    const vendors = await r.json();
+    let html = `<h3 style="margin-bottom:16px;">Vendors (${vendors.length})</h3>`;
+    vendors.forEach(v => {
+      html += `<div class="result-card" style="margin-bottom:12px;">`;
+      html += `<h3 style="color:var(--accent-light);">${v.name}</h3>`;
+      html += `<div style="font-size:12px;"><b>Type:</b> ${v.type || 'N/A'} | <b>Risk:</b> ${v.risk_score ?? 'N/A'} | <b>Status:</b> ${v.status || 'N/A'}</div>`;
+      html += `</div>`;
+    });
+    div.innerHTML = html;
+  } catch(e) {
+    div.innerHTML = `<div class="sop-invalid sop-validation">Error: ${e.message}</div>`;
+  }
+}
+
+// --- Init ---
+loadGraph();
+</script>
+</body>
+</html>
