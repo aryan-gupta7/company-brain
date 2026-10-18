@@ -110,7 +110,7 @@ def run_interactive(agent: CompanyBrainAgent):
     print("=" * 70)
     print()
     print("  Ask about: incidents, automation, processes, compliance, cascades")
-    print("  Commands: /help, /demo, /stats, /quit")
+    print("  Commands: /help, /demo, /stats, /vendors, /incidents, /search <term>, /similar <text>, /cascade <vendor_id>, /quit")
     print()
 
     while True:
@@ -136,7 +136,17 @@ def run_interactive(agent: CompanyBrainAgent):
             print("    • Cascade: 'what if vendor X goes down?', 'blast radius'")
             print("    • Compliance: 'GDPR deadlines', 'regulatory requirements'")
             print()
-            print("  Commands: /help, /demo, /stats, /quit")
+            print("  Commands: /help, /demo, /stats, /vendors, /incidents, /search <term>, /similar <text>, /cascade <vendor_id>, /quit")
+            print()
+            print("  New features:")
+            print("    /search <term>       — Full-text search (RediSearch TF-IDF)")
+            print("    /similar <text>      — Vector similarity search (HNSW, 384-dim)")
+            print("    /cascade <vendor_id> — Blast radius analysis")
+            print()
+            print("  Examples:")
+            print("    /similar ransomware attack")
+            print("    /cascade v_cloudhost")
+            print("    /search invoice")
             continue
 
         if query.lower() == '/demo':
@@ -161,6 +171,78 @@ def run_interactive(agent: CompanyBrainAgent):
                 print()
             except Exception as e:
                 print(f"  ⚠️  Could not fetch stats: {e}")
+            continue
+
+        if query.lower() == '/vendors':
+            try:
+                vendors = agent.db.get_all_vendors()
+                print()
+                print("  Vendors:")
+                for v in vendors:
+                    print(f"    {v[1]} ({v[2]}) — risk: {v[3]}")
+                print()
+            except Exception as e:
+                print(f"  ⚠️  Could not fetch vendors: {e}")
+            continue
+
+        if query.lower() == '/incidents':
+            try:
+                incidents = agent.db.get_all_incidents()
+                print()
+                print("  Incidents:")
+                for i in incidents:
+                    print(f"    {i[0]}: {i[1]} ({i[2]}) — {i[3]}")
+                print()
+            except Exception as e:
+                print(f"  ⚠️  Could not fetch incidents: {e}")
+            continue
+
+        if query.lower().startswith('/search '):
+            term = query[8:].strip()
+            if term:
+                try:
+                    results = agent.db.full_text_search_tasks(term)
+                    print()
+                    print(f"  Full-text search: '{term}'")
+                    for r in results:
+                        print(f"    {r[0]}: {r[1]} (score: {r[3]})")
+                    print()
+                except Exception as e:
+                    print(f"  ⚠️  Search error: {e}")
+            continue
+
+        if query.lower().startswith('/similar '):
+            term = query[9:].strip()
+            if term:
+                try:
+                    from core.embeddings import embed_text
+                    query_vec = embed_text(term)
+                    result = agent.db.graph.query(
+                        'CALL db.idx.vector.queryNodes(\$label, \$attr, \$k, vecf32(\$qv)) YIELD node, score RETURN node.incident_id, node.company_name, node.type, node.severity, score ORDER BY score DESC LIMIT 5',
+                        {'label': 'Incident', 'attr': 'embedding', 'k': 5, 'qv': query_vec}
+                    )
+                    print()
+                    print(f"  Similar incidents: '{term}'")
+                    for row in (result.result_set or []):
+                        name = row[1] if row[1] else row[0]
+                        print(f"    {name} — {row[2]} ({row[3]}) score={row[4]:.2f}")
+                    print()
+                except Exception as e:
+                    print(f"  ⚠️  Vector search error: {e}")
+            continue
+
+        if query.lower().startswith('/cascade '):
+            vendor_id = query[9:].strip()
+            if vendor_id:
+                try:
+                    results = agent.db.get_cascade_impact(vendor_id)
+                    print()
+                    print(f"  Cascade impact: {vendor_id}")
+                    for r in results:
+                        print(f"    {r[0]}: {r[1]} - {r[2]}")
+                    print()
+                except Exception as e:
+                    print(f"  ⚠️  Cascade error: {e}")
             continue
 
         # Classify and handle

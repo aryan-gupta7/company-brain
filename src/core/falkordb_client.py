@@ -34,6 +34,16 @@ class CompanyBrainDB:
             except Exception:
                 pass  # Index may already exist
 
+    def update_node_embedding(self, label: str, node_id_prop: str, node_id: str, embedding: list):
+        """Update the embedding property on a node."""
+        self.graph.query(
+            f"""
+            MATCH (n:{label} {{ {node_id_prop}: $node_id }})
+            SET n.embedding = vecf32($embedding)
+            """,
+            {'node_id': node_id, 'embedding': embedding}
+        )
+
     def create_fulltext_indexes(self):
         """Create full-text indexes for keyword search (RediSearch TF-IDF)."""
         for label in ['Task', 'Document', 'Playbook', 'Regulation']:
@@ -160,6 +170,340 @@ class CompanyBrainDB:
                 """,
                 reg
             )
+
+    def seed_processes(self, processes: list, tasks: list):
+        """Seed process nodes and link to tasks via HAS_TASK."""
+        for proc in processes:
+            self.graph.query(
+                """
+                MERGE (p:Process {process_id: $process_id})
+                SET p.name = $name,
+                    p.domain = $domain,
+                    p.description = $description
+                """,
+                {
+                    'process_id': proc['process_id'],
+                    'name': proc['name'],
+                    'domain': proc['domain'],
+                    'description': proc['description'],
+                }
+            )
+            # Link to owner
+            if proc.get('owner_person_id'):
+                self.graph.query(
+                    """
+                    MATCH (p:Process {process_id: $process_id})
+                    MATCH (person:Person {person_id: $person_id})
+                    MERGE (person)-[:OWNS]->(p)
+                    """,
+                    {'process_id': proc['process_id'], 'person_id': proc['owner_person_id']}
+                )
+            # Link to tasks
+            for task_id in proc.get('task_ids', []):
+                self.graph.query(
+                    """
+                    MATCH (p:Process {process_id: $process_id})
+                    MATCH (t:Task {task_id: $task_id})
+                    MERGE (p)-[:HAS_TASK]->(t)
+                    """,
+                    {'process_id': proc['process_id'], 'task_id': task_id}
+                )
+
+    def seed_documents(self, documents: list):
+        """Seed document nodes."""
+        for doc in documents:
+            self.graph.query(
+                """
+                MERGE (d:Document {doc_id: $doc_id})
+                SET d.title = $title,
+                    d.type = $type,
+                    d.format = $format
+                """,
+                doc
+            )
+
+    def seed_vendors(self, vendors: list):
+        """Seed vendor/service nodes and link to tasks/processes."""
+        for vendor in vendors:
+            self.graph.query(
+                """
+                MERGE (v:Vendor {entity_id: $entity_id})
+                SET v.name = $name,
+                    v.type = $type,
+                    v.contact_info = $contact_info,
+                    v.risk_score = $risk_score,
+                    v.status = $status
+                """,
+                vendor
+            )
+            # Link to tasks
+            for task_id in vendor.get('provides_for_task_ids', []):
+                self.graph.query(
+                    """
+                    MATCH (v:Vendor {entity_id: $entity_id})
+                    MATCH (t:Task {task_id: $task_id})
+                    MERGE (v)-[:PROVIDES_SERVICE_FOR]->(t)
+                    """,
+                    {'entity_id': vendor['entity_id'], 'task_id': task_id}
+                )
+            # Link to processes
+            for proc_id in vendor.get('provides_for_process_ids', []):
+                self.graph.query(
+                    """
+                    MATCH (v:Vendor {entity_id: $entity_id})
+                    MATCH (p:Process {process_id: $process_id})
+                    MERGE (v)-[:PROVIDES_SERVICE_FOR]->(p)
+                    """,
+                    {'entity_id': vendor['entity_id'], 'process_id': proc_id}
+                )
+
+    def seed_incidents(self, incidents: list):
+        """Seed incident nodes and link to playbooks."""
+        for inc in incidents:
+            self.graph.query(
+                """
+                MERGE (i:Incident {incident_id: $incident_id})
+                SET i.type = $type,
+                    i.severity = $severity,
+                    i.detected_at = $detected_at,
+                    i.status = $status
+                """,
+                inc
+            )
+            # Link to playbook
+            if inc.get('triggers_playbook_id'):
+                self.graph.query(
+                    """
+                    MATCH (i:Incident {incident_id: $incident_id})
+                    MATCH (pb:Playbook {playbook_id: $playbook_id})
+                    MERGE (i)-[:TRIGGERS]->(pb)
+                    """,
+                    {'incident_id': inc['incident_id'], 'playbook_id': inc['triggers_playbook_id']}
+                )
+
+    def seed_people(self, people: list):
+        """Seed additional people."""
+        for person in people:
+            self.graph.query(
+                """
+                MERGE (p:Person {person_id: $person_id})
+                SET p.name = $name,
+                    p.role = $role,
+                    p.department = $department
+                """,
+                person
+            )
+
+    def seed_task_dependencies(self, dependencies: list):
+        """Seed DEPENDS_ON relationships between tasks."""
+        for dep in dependencies:
+            self.graph.query(
+                """
+                MATCH (a:Task {task_id: $from_id})
+                MATCH (b:Task {task_id: $to_id})
+                MERGE (a)-[r:DEPENDS_ON]->(b)
+                SET r.source_quote = $source_quote,
+                    r.confidence = $confidence
+                """,
+                {
+                    'from_id': dep['from'],
+                    'to_id': dep['to'],
+                    'source_quote': dep.get('source_quote', ''),
+                    'confidence': dep.get('confidence', 0.5),
+                }
+            )
+
+    def seed_compliance_mappings(self, mappings: list):
+        """Seed COMPLIES_WITH relationships between tasks and regulations."""
+        for mapping in mappings:
+            self.graph.query(
+                """
+                MATCH (t:Task {task_id: $task_id})
+                MATCH (r:Regulation {reg_id: $reg_id})
+                MERGE (t)-[c:COMPLIES_WITH]->(r)
+                SET c.source_quote = $source_quote
+                """,
+                {
+                    'task_id': mapping['task_id'],
+                    'reg_id': mapping['reg_id'],
+                    'source_quote': mapping.get('source_quote', ''),
+                }
+            )
+
+    def create_range_indexes(self):
+        """Create range indexes for property filtering."""
+        index_definitions = [
+            ("Task", "due_date"),
+            ("Task", "automation_feasibility"),
+            ("Task", "compliance_risk"),
+            ("Incident", "detected_at"),
+            ("Incident", "severity"),
+            ("Regulation", "effective_date"),
+            ("Vendor", "risk_score"),
+        ]
+        for label, prop in index_definitions:
+            try:
+                self.graph.query(
+                    f"CREATE RANGE INDEX FOR (n:{label}) ON (n.{prop})"
+                )
+            except Exception:
+                pass
+
+    def get_cascade_impact(self, entity_id: str, max_depth: int = 3) -> list:
+        """Get all entities downstream of a vendor/service (blast radius).
+
+        Uses explicit multi-hop queries instead of variable-length paths
+        to avoid FalkorDB's 'unhandled type in inlined properties' error.
+        """
+        results = []
+        visited = {entity_id}
+
+        # Hop 1: direct connections (Vendor → Process or Vendor → Task)
+        result = self.graph.query(
+            """
+            MATCH (v:Vendor {entity_id: $entity_id})--(connected)
+            WHERE connected:Task OR connected:Process
+            RETURN DISTINCT labels(connected) AS entity_type,
+                   COALESCE(connected.task_id, connected.process_id) AS id,
+                   connected.name AS name
+            """,
+            {'entity_id': entity_id}
+        )
+        for row in result.result_set or []:
+            if row[1] not in visited:
+                visited.add(row[1])
+                results.append(row)
+
+        # Hop 2: Process → Task (from processes found in hop 1)
+        proc_ids = [row[1] for row in results if row[1] and row[1].startswith('proc_')]
+        if proc_ids:
+            result = self.graph.query(
+                """
+                MATCH (p:Process)-[:HAS_TASK]->(t:Task)
+                WHERE p.process_id IN $proc_ids
+                RETURN DISTINCT labels(t) AS entity_type,
+                       t.task_id AS id,
+                       t.name AS name
+                """,
+                {'proc_ids': proc_ids}
+            )
+            for row in result.result_set or []:
+                if row[1] not in visited:
+                    visited.add(row[1])
+                    results.append(row)
+
+        # Hop 3: Task → Task (DEPENDS_ON)
+        task_ids = [row[1] for row in results if row[1] and row[1].startswith('t_')]
+        if task_ids:
+            result = self.graph.query(
+                """
+                MATCH (t:Task)-[d:DEPENDS_ON]->(dep:Task)
+                WHERE t.task_id IN $task_ids
+                RETURN DISTINCT labels(dep) AS entity_type,
+                       dep.task_id AS id,
+                       dep.name AS name
+                """,
+                {'task_ids': task_ids}
+            )
+            for row in result.result_set or []:
+                if row[1] not in visited:
+                    visited.add(row[1])
+                    results.append(row)
+
+        return results
+
+    def get_process_with_tasks(self, process_id: str) -> list:
+        """Get a process and all its tasks."""
+        result = self.graph.query(
+            """
+            MATCH (p:Process {process_id: $process_id})-[:HAS_TASK]->(t:Task)
+            OPTIONAL MATCH (t)-[:COMPLIES_WITH]->(r:Regulation)
+            RETURN p.name AS process_name, t.task_id, t.name AS task_name,
+                   t.description, collect(r.name) AS regulations
+            ORDER BY t.name
+            """,
+            {'process_id': process_id}
+        )
+        return result.result_set or []
+
+    def get_task_dependencies(self, task_id: str) -> list:
+        """Get all dependencies for a task (upstream and downstream)."""
+        result = self.graph.query(
+            """
+            MATCH (t:Task {task_id: $task_id})
+            OPTIONAL MATCH (t)-[d:DEPENDS_ON]->(dep:Task)
+            OPTIONAL MATCH (downstream:Task)-[d2:DEPENDS_ON]->(t)
+            RETURN collect(DISTINCT {task: dep.name, direction: 'depends_on', quote: d.source_quote}) AS prerequisites,
+                   collect(DISTINCT {task: downstream.name, direction: 'required_by', quote: d2.source_quote}) AS downstream
+            """,
+            {'task_id': task_id}
+        )
+        return result.result_set or []
+
+    def get_compliance_for_task(self, task_id: str) -> list:
+        """Get all regulations that apply to a task."""
+        result = self.graph.query(
+            """
+            MATCH (t:Task {task_id: $task_id})-[c:COMPLIES_WITH]->(r:Regulation)
+            RETURN r.name AS regulation, r.jurisdiction, r.citation, c.source_quote
+            """,
+            {'task_id': task_id}
+        )
+        return result.result_set or []
+
+    def get_incidents_for_playbook(self, playbook_id: str) -> list:
+        """Get all incidents that triggered a specific playbook."""
+        result = self.graph.query(
+            """
+            MATCH (i:Incident)-[:TRIGGERS]->(pb:Playbook {playbook_id: $playbook_id})
+            RETURN i.incident_id, i.type, i.severity, i.detected_at, i.status
+            ORDER BY i.detected_at DESC
+            """,
+            {'playbook_id': playbook_id}
+        )
+        return result.result_set or []
+
+    def get_evidence_path_formatted(self, node_ids: list) -> list:
+        """Get evidence path and return as formatted string."""
+        result = self.graph.query(
+            """
+            MATCH p=(n)-[*1..3]-(m)
+            WHERE id(n) IN $node_ids
+            RETURN [node IN nodes(p) | COALESCE(node.name, node.task_id, node.incident_id, 'unknown')] AS path_nodes,
+                   [rel IN relationships(p) | type(rel)] AS path_rels
+            LIMIT 10
+            """,
+            {'node_ids': node_ids}
+        )
+        return result.result_set or []
+
+    def get_all_incidents(self) -> list:
+        """Get all incidents."""
+        result = self.graph.query(
+            "MATCH (i:Incident) RETURN i.incident_id, i.type, i.severity, i.status ORDER BY i.detected_at DESC"
+        )
+        return result.result_set or []
+
+    def get_all_vendors(self) -> list:
+        """Get all vendors."""
+        result = self.graph.query(
+            "MATCH (v:Vendor) RETURN v.entity_id, v.name, v.type, v.risk_score ORDER BY v.name"
+        )
+        return result.result_set or []
+
+    def get_all_documents(self) -> list:
+        """Get all documents."""
+        result = self.graph.query(
+            "MATCH (d:Document) RETURN d.doc_id, d.title, d.type ORDER BY d.title"
+        )
+        return result.result_set or []
+
+    def get_all_processes(self) -> list:
+        """Get all processes."""
+        result = self.graph.query(
+            "MATCH (p:Process) RETURN p.process_id, p.name, p.domain ORDER BY p.name"
+        )
+        return result.result_set or []
 
     def get_playbook_steps(self, incident_type: str) -> list:
         """Get ordered playbook steps with contacts and deadlines."""

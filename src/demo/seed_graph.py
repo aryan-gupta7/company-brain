@@ -11,7 +11,11 @@ Usage:
 import sys; sys.path.insert(0, 'src')
 
 import argparse
-from demo.seed_data import DATA_BREACH_PLAYBOOK, RANSOMWARE_PLAYBOOK, DEMO_TASKS
+from demo.seed_data import (
+    DATA_BREACH_PLAYBOOK, RANSOMWARE_PLAYBOOK, DEMO_TASKS,
+    DEMO_PROCESSES, DEMO_DOCUMENTS, DEMO_VENDORS, DEMO_INCIDENTS,
+    DEMO_PEOPLE_EXTRA, TASK_DEPENDENCIES, COMPLIANCE_MAPPINGS,
+)
 from core.falkordb_client import CompanyBrainDB
 
 
@@ -87,6 +91,41 @@ def seed_all(db: CompanyBrainDB, reset: bool = False):
     db.seed_regulations(REGULATIONS)
     print(f"  ✅ {len(REGULATIONS)} regulations seeded")
 
+    # --- Additional people ---
+    print("  Seeding people (ownership/cascade)...")
+    db.seed_people(DEMO_PEOPLE_EXTRA)
+    print(f"  ✅ {len(DEMO_PEOPLE_EXTRA)} people seeded")
+
+    # --- Processes ---
+    print("  Seeding processes...")
+    db.seed_processes(DEMO_PROCESSES, DEMO_TASKS)
+    print(f"  ✅ {len(DEMO_PROCESSES)} processes seeded")
+
+    # --- Documents ---
+    print("  Seeding documents...")
+    db.seed_documents(DEMO_DOCUMENTS)
+    print(f"  ✅ {len(DEMO_DOCUMENTS)} documents seeded")
+
+    # --- Vendors ---
+    print("  Seeding vendors...")
+    db.seed_vendors(DEMO_VENDORS)
+    print(f"  ✅ {len(DEMO_VENDORS)} vendors seeded")
+
+    # --- Incidents ---
+    print("  Seeding incidents...")
+    db.seed_incidents(DEMO_INCIDENTS)
+    print(f"  ✅ {len(DEMO_INCIDENTS)} incidents seeded")
+
+    # --- Task dependencies ---
+    print("  Seeding task dependencies...")
+    db.seed_task_dependencies(TASK_DEPENDENCIES)
+    print(f"  ✅ {len(TASK_DEPENDENCIES)} dependencies seeded")
+
+    # --- Compliance mappings ---
+    print("  Seeding compliance mappings...")
+    db.seed_compliance_mappings(COMPLIANCE_MAPPINGS)
+    print(f"  ✅ {len(COMPLIANCE_MAPPINGS)} compliance mappings seeded")
+
     # --- Create indexes ---
     print("  Creating indexes...")
     try:
@@ -94,6 +133,12 @@ def seed_all(db: CompanyBrainDB, reset: bool = False):
         print("  ✅ Full-text indexes created")
     except Exception as e:
         print(f"  ⚠️  Full-text index warning: {e}")
+
+    try:
+        db.create_range_indexes()
+        print("  ✅ Range indexes created")
+    except Exception as e:
+        print(f"  ⚠️  Range index warning: {e}")
 
     # Vector indexes require actual embedding data; skip if no embeddings
     # (Would be created when documents/tasks have embeddings populated)

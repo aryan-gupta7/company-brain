@@ -261,6 +261,150 @@ DEMO_TASKS = [
 ]
 
 
+# --- Demo company: processes ---
+
+DEMO_PROCESSES = [
+    {
+        'process_id': 'proc_finance',
+        'name': 'Finance & Accounting',
+        'domain': 'Finance',
+        'description': 'All financial operations including invoicing, expenses, and reporting',
+        'owner_person_id': 'p_cfo',
+        'task_ids': ['t_invoice_recon', 't_expense_report'],
+    },
+    {
+        'process_id': 'proc_sales',
+        'name': 'Sales & CRM',
+        'domain': 'Sales',
+        'description': 'Customer relationship management and data entry',
+        'owner_person_id': 'p_vp',
+        'task_ids': ['t_data_entry'],
+    },
+    {
+        'process_id': 'proc_strategy',
+        'name': 'Strategic Planning',
+        'domain': 'Executive',
+        'description': 'Quarterly strategy reviews and market analysis',
+        'owner_person_id': 'p_ceo',
+        'task_ids': ['t_strategy_review'],
+    },
+]
+
+
+# --- Demo company: documents ---
+
+DEMO_DOCUMENTS = [
+    {
+        'doc_id': 'doc_onboarding_sop',
+        'title': 'Employee Onboarding Procedure (SOP-HR-003)',
+        'type': 'SOP',
+        'format': 'text',
+        'source_quote': 'After receiving the signed offer letter, IT creates the Active Directory account',
+    },
+    {
+        'doc_id': 'doc_invoice_sop',
+        'title': 'Invoice Processing Procedure',
+        'type': 'SOP',
+        'format': 'text',
+        'source_quote': 'After receiving the invoice, match it against the purchase order',
+    },
+    {
+        'doc_id': 'doc_data_breach_pb',
+        'title': 'Data Breach Response Playbook',
+        'type': 'Playbook',
+        'format': 'PDF',
+        'source_quote': 'NIST SP 800-61 Rev. 2',
+    },
+]
+
+
+# --- Demo company: vendors ---
+
+DEMO_VENDORS = [
+    {
+        'entity_id': 'v_securecorp',
+        'name': 'SecureCorp IR',
+        'type': 'Incident Response',
+        'contact_info': 'ir@securecorp.com',
+        'risk_score': 0.2,
+        'status': 'active',
+        'provides_for_task_ids': ['step_forensics'],
+    },
+    {
+        'entity_id': 'v_cloudhost',
+        'name': 'CloudHost Inc',
+        'type': 'Cloud Infrastructure',
+        'contact_info': 'support@cloudhost.io',
+        'risk_score': 0.4,
+        'status': 'active',
+        'provides_for_process_ids': ['proc_finance', 'proc_sales'],
+    },
+    {
+        'entity_id': 'v_crm_vendor',
+        'name': 'CRMPro',
+        'type': 'CRM Software',
+        'contact_info': 'help@crmpro.com',
+        'risk_score': 0.3,
+        'status': 'active',
+        'provides_for_task_ids': ['t_data_entry'],
+    },
+]
+
+
+# --- Demo company: incidents ---
+
+DEMO_INCIDENTS = [
+    {
+        'incident_id': 'inc_2026_001',
+        'type': 'data_breach',
+        'severity': 'high',
+        'detected_at': '2026-10-16T14:30:00',
+        'status': 'active',
+        'triggers_playbook_id': 'pb_data_breach',
+    },
+    {
+        'incident_id': 'inc_2026_002',
+        'type': 'ransomware',
+        'severity': 'critical',
+        'detected_at': '2026-09-28T09:15:00',
+        'status': 'resolved',
+        'triggers_playbook_id': 'pb_ransomware',
+    },
+]
+
+
+# --- Additional people (for ownership and cascade) ---
+
+DEMO_PEOPLE_EXTRA = [
+    {'person_id': 'p_cfo', 'name': 'Robert Kim', 'role': 'CFO', 'department': 'Finance'},
+    {'person_id': 'p_ceo', 'name': 'Diana Ross', 'role': 'CEO', 'department': 'Executive'},
+]
+
+
+# --- Task dependencies (for cascade analysis) ---
+
+TASK_DEPENDENCIES = [
+    {'from': 't_expense_report', 'to': 't_invoice_recon',
+     'source_quote': 'Expense reports reference invoice reconciliation data',
+     'confidence': 0.7},
+    {'from': 't_strategy_review', 'to': 't_data_entry',
+     'source_quote': 'Strategy review uses customer data from CRM',
+     'confidence': 0.6},
+]
+
+
+# --- Compliance mappings ---
+
+COMPLIANCE_MAPPINGS = [
+    {'task_id': 't_data_entry', 'reg_id': 'gdpr_eu',
+     'source_quote': 'Customer data entry must comply with GDPR Art. 33'},
+    {'task_id': 't_data_entry', 'reg_id': 'ccpa_ca',
+     'source_quote': 'California customer data subject to CCPA'},
+    {'task_id': 't_invoice_recon', 'reg_id': 'sec_8k',
+     'source_quote': 'Financial reconciliation data for SEC reporting'},
+]
+
+
 def get_playbook(incident_type: str) -> dict:
     """Get a curated playbook by incident type."""
     return PLAYBOOKS.get(incident_type)
@@ -269,3 +413,38 @@ def get_playbook(incident_type: str) -> dict:
 def get_demo_tasks() -> list:
     """Get demo tasks for automation assessment."""
     return DEMO_TASKS
+
+
+def get_demo_processes() -> list:
+    """Get demo processes."""
+    return DEMO_PROCESSES
+
+
+def get_demo_documents() -> list:
+    """Get demo documents."""
+    return DEMO_DOCUMENTS
+
+
+def get_demo_vendors() -> list:
+    """Get demo vendors."""
+    return DEMO_VENDORS
+
+
+def get_demo_incidents() -> list:
+    """Get demo incidents."""
+    return DEMO_INCIDENTS
+
+
+def get_demo_people_extra() -> list:
+    """Get additional people for ownership/cascade."""
+    return DEMO_PEOPLE_EXTRA
+
+
+def get_task_dependencies() -> list:
+    """Get task dependencies for cascade analysis."""
+    return TASK_DEPENDENCIES
+
+
+def get_compliance_mappings() -> list:
+    """Get task-to-regulation compliance mappings."""
+    return COMPLIANCE_MAPPINGS
